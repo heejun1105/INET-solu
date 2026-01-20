@@ -1,0 +1,3068 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교실 관리 - INET</title>
+    <link rel="stylesheet" href="/main.css">
+    <link rel="stylesheet" href="/navbar.css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* 페이지 전용 스타일 (main.css 네비게이션/푸터 스타일 유지) */
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        main {
+            flex: 1;
+        }
+
+        /* 전체 컨테이너 스타일 */
+        .classroom-manage-container {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #3730a3 100%);
+            min-height: 100vh;
+            padding: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .classroom-manage-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+            z-index: 1;
+        }
+
+        .classroom-container {
+            position: relative;
+            z-index: 2;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* 헤더 섹션 */
+        .modern-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .modern-header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .modern-header .subtitle {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+
+        /* 알림 메시지 */
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            font-weight: 500;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #d1fae5;
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fecaca;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        /* 섹션 카드 */
+        .section-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            animation: slideInFromBottom 0.6s ease-out;
+        }
+
+        /* 학교 선택 카드 */
+        .school-select-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 2.5rem;
+            margin-bottom: 3rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            animation: slideInFromBottom 0.6s ease-out;
+        }
+
+        .section-header-modern {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .section-header-modern h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin: 0;
+            flex: 1;
+        }
+
+        .section-header-modern i {
+            font-size: 1.3rem;
+            color: #60a5fa;
+        }
+
+        .badge {
+            background: rgba(96, 165, 250, 0.2);
+            color: #60a5fa;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        /* 통계 그리드 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #60a5fa;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        /* 폼 스타일 */
+        .form-group-modern {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group-modern label {
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.75rem;
+            font-size: 0.95rem;
+            display: block;
+        }
+
+        .form-group-modern input,
+        .form-group-modern select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            width: 100%;
+        }
+
+        .form-group-modern input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .form-group-modern input:focus,
+        .form-group-modern select:focus {
+            outline: none;
+            border-color: #60a5fa;
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+        }
+
+        .form-group-modern select {
+            cursor: pointer;
+        }
+
+        .form-group-modern select option {
+            background: #1e40af;
+            color: #ffffff;
+        }
+
+        /* 인라인 폼 */
+        .form-inline {
+            display: flex;
+            gap: 1rem;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+
+        .form-inline input {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .form-inline input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .form-inline input:focus {
+            outline: none;
+            border-color: #60a5fa;
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+        }
+
+        /* 버튼 스타일 */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(96, 165, 250, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(96, 165, 250, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(107, 114, 128, 0.8);
+            color: white;
+            border: 1px solid rgba(156, 163, 175, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(107, 114, 128, 1);
+            transform: translateY(-1px);
+        }
+
+        /* 섹션 컨텐츠 */
+        .section-content {
+            position: relative;
+        }
+
+        /* 중복 교실 관리 */
+        .duplicate-section {
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        /* 일괄 병합 컨트롤 */
+        .bulk-merge-controls {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .bulk-select-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .selected-count {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            background: rgba(59, 130, 246, 0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+        }
+
+        .bulk-merge-btn {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border: none;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .bulk-merge-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+        }
+
+        .bulk-merge-btn:disabled {
+            background: rgba(107, 114, 128, 0.5);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 일괄 작업 버튼 컨테이너 */
+        .bulk-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .bulk-remove-btn {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border: none;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .bulk-remove-btn:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+        }
+
+        /* 체크박스 스타일 */
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding-left: 2rem;
+            cursor: pointer;
+            font-size: 1rem;
+            color: white;
+            user-select: none;
+        }
+
+        .checkbox-container input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+
+        .checkmark {
+            position: absolute;
+            left: 0;
+            height: 1.25rem;
+            width: 1.25rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-container:hover input ~ .checkmark {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+
+        .checkbox-container input:checked ~ .checkmark {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+
+        .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+        }
+
+        .checkbox-container input:checked ~ .checkmark:after {
+            display: block;
+        }
+
+        .checkbox-container .checkmark:after {
+            left: 4px;
+            top: 1px;
+            width: 4px;
+            height: 8px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .duplicate-group {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .duplicate-group.selected {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: rgba(59, 130, 246, 0.4);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .duplicate-header {
+            font-weight: 600;
+            color: #fecaca;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .duplicate-header .checkbox-container {
+            margin-bottom: 0;
+        }
+
+        .duplicate-items {
+            display: grid;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        /* 그룹 액션 스타일 */
+        .group-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .remove-group-btn {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .remove-group-btn:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        .remove-group-btn:active {
+            transform: translateY(0);
+        }
+
+        .duplicate-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 1rem;
+            border-left: 3px solid #f59e0b;
+        }
+
+        .classroom-name {
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.25rem;
+        }
+
+        .classroom-info {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .usage-info {
+            font-weight: 500;
+        }
+
+        /* 교실 목록 */
+        .classroom-list-section {
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .classroom-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .classroom-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .classroom-order-input-container {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            z-index: 10;
+        }
+        
+        .order-label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.85rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        .classroom-order-input {
+            width: 60px;
+            padding: 0.4rem 0.5rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-align: center;
+            transition: all 0.3s ease;
+            /* 숫자 입력 필드의 스피너 제거 */
+            -moz-appearance: textfield;
+        }
+        
+        .classroom-order-input::-webkit-outer-spin-button,
+        .classroom-order-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        
+        .classroom-order-input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.3);
+            border-color: #60a5fa;
+            box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+        }
+        
+        .classroom-order-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .classroom-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .classroom-card.selected {
+            border-color: #60a5fa;
+            background: rgba(96, 165, 250, 0.15);
+            box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+        }
+
+        .classroom-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .classroom-checkbox-container {
+            margin: 0;
+        }
+
+        .classroom-name {
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 1.1rem;
+            flex: 1;
+        }
+
+        /* 전체 선택 컨트롤 - 교실용 */
+        .bulk-select-controls-classroom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .selected-info {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        /* 중복교실체크 버튼 */
+        .duplicate-check-btn {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+            margin-right: 1rem;
+        }
+
+        .duplicate-check-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4);
+        }
+
+        .duplicate-check-btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.5);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* 섹션 헤더 조정 */
+        .section-header-modern {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .section-header-modern h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin: 0;
+            flex: 1;
+        }
+
+        .classroom-actions {
+            margin-top: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .classroom-actions .btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+            flex: 1;
+            min-width: 80px;
+            border-color: rgba(96, 165, 250, 0.5);
+        }
+
+        .classroom-card.empty {
+            border-left: 4px solid #10b981;
+        }
+
+        .classroom-card.in-use {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .classroom-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .classroom-actions .btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        /* 빈 상태 */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 1rem;
+        }
+
+        .empty-state p {
+            font-size: 1.1rem;
+            margin: 0;
+        }
+
+        /* 모달 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .modal-body {
+            padding: 2rem;
+        }
+
+        .modal-footer {
+            padding: 1.5rem 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .form-field {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-field label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .form-field input,
+        .form-field select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            font-size: 1rem;
+        }
+
+        .form-field input:focus,
+        .form-field select:focus {
+            outline: none;
+            border-color: #60a5fa;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* 모달 스타일 */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%);
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease-out;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .close {
+            font-size: 1.8rem;
+            font-weight: bold;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.8);
+            transition: color 0.3s ease;
+        }
+
+        .close:hover {
+            color: #ffffff;
+        }
+
+        .modal-body {
+            padding: 2rem;
+            color: #1f2937;
+        }
+
+        .modal-footer {
+            padding: 1.5rem 2rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            border-radius: 0 0 20px 20px;
+        }
+
+        .form-section {
+            margin-bottom: 2rem;
+        }
+
+        .form-section h4 {
+            color: #1e40af;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .merge-list {
+            background: rgba(243, 244, 246, 0.8);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .merge-item {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            border-radius: 8px;
+            border-left: 3px solid #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+            color: #1f2937;
+        }
+
+        .merge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .merge-warning i {
+            color: #f59e0b;
+            margin-right: 0.5rem;
+        }
+
+        .merge-warning ul {
+            margin: 0.5rem 0 0 1.5rem;
+            color: #92400e;
+        }
+
+        .merge-warning li {
+            margin: 0.25rem 0;
+        }
+
+        /* 모달 폼 스타일 */
+        .modal .form-group-modern label {
+            color: #374151;
+            font-weight: 600;
+        }
+
+        .modal .form-group-modern input,
+        .modal .form-group-modern select {
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid rgba(156, 163, 175, 0.3);
+            color: #1f2937;
+        }
+
+        .modal .form-group-modern input:focus,
+        .modal .form-group-modern select:focus {
+            border-color: #60a5fa;
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+        }
+
+        .modal .form-group-modern input::placeholder {
+            color: rgba(107, 114, 128, 0.7);
+        }
+
+        /* 애니메이션 */
+        @keyframes slideInFromBottom {
+            0% {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(96, 165, 250, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
+            }
+        }
+
+        @keyframes modalSlideIn {
+            0% {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* 진행 상황 모달 스타일 */
+        .progress-modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+
+        .progress-modal-content {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #3730a3 100%);
+            margin: 10% auto;
+            padding: 3rem;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-modal-content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+            z-index: 1;
+        }
+
+        .progress-modal-content > * {
+            position: relative;
+            z-index: 2;
+        }
+
+        .progress-icon {
+            font-size: 4rem;
+            color: #60a5fa;
+            margin-bottom: 1.5rem;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 1rem;
+        }
+
+        .progress-message {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .progress-bar-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            height: 8px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #60a5fa, #3b82f6);
+            height: 100%;
+            border-radius: 12px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-details {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 1rem;
+        }
+
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .classroom-container {
+                padding: 0 1rem;
+            }
+
+            .modern-header h1 {
+                font-size: 2.2rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .classroom-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-inline {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .form-inline input {
+                min-width: 100%;
+            }
+
+            /* 일괄 병합 컨트롤 모바일 최적화 */
+            .bulk-merge-controls {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 1rem;
+            }
+
+            .bulk-select-container {
+                justify-content: center;
+            }
+
+            .bulk-merge-btn {
+                width: 100%;
+                text-align: center;
+            }
+
+            /* 체크박스 컨테이너 모바일 최적화 */
+            .duplicate-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            /* 진행 모달 모바일 최적화 */
+            .progress-modal-content {
+                margin: 20% auto;
+                padding: 2rem;
+                width: 95%;
+            }
+
+            .progress-icon {
+                font-size: 3rem;
+            }
+
+            .progress-title {
+                font-size: 1.3rem;
+            }
+
+            .duplicate-header .checkbox-container {
+                align-self: flex-start;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .modern-header {
+                padding: 2rem 1.5rem;
+            }
+
+            .section-card,
+            .school-select-card {
+                padding: 2rem 1.5rem;
+            }
+
+            .modern-header h1 {
+                font-size: 1.8rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 헤더 액션 스타일 */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .reset-excluded-btn {
+            background: rgba(107, 114, 128, 0.8);
+            border: none;
+            color: white;
+            padding: 0.375rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .reset-excluded-btn:hover {
+            background: rgba(107, 114, 128, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(107, 114, 128, 0.4);
+        }
+
+        .reset-excluded-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <!-- 네비게이션 바 포함 -->
+    <div th:replace="~{fragments/navbar :: navbar}"></div>
+    
+    <!-- 병합 모달 -->
+    <div id="mergeModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-compress-alt"></i> 교실 병합</h3>
+                <span class="close" onclick="closeMergeModal()">&times;</span>
+            </div>
+            <form id="mergeForm" action="/classroom/merge" method="post">
+                <input type="hidden" name="schoolId" th:value="${selectedSchoolId}">
+                
+                <div class="modal-body">
+                    <div class="form-section">
+                        <h4><i class="fas fa-list"></i> 병합할 교실 목록</h4>
+                        <div id="mergeClassroomsList" class="merge-list">
+                            <!-- JavaScript로 동적 생성 -->
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h4><i class="fas fa-edit"></i> 새로운 교실명</h4>
+                        <div class="form-group-modern">
+                            <label for="mergeNewRoomName">통합 후 교실명을 입력하세요</label>
+                            <input type="text" id="mergeNewRoomName" name="newRoomName" placeholder="새로운 교실명 (예: 1학년 1반)" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h4><i class="fas fa-target"></i> 대표 교실 선택</h4>
+                        <div class="form-group-modern">
+                            <label for="mergeTargetId">병합의 기준이 될 교실을 선택하세요</label>
+                            <select id="mergeTargetId" name="targetId" required>
+                                <!-- JavaScript로 동적 생성 -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="merge-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>주의사항:</strong>
+                        <ul>
+                            <li>선택된 모든 교실의 이름이 새로운 교실명으로 변경됩니다.</li>
+                            <li>대표 교실은 유지되고, 나머지 교실들은 대표 교실과 통합됩니다.</li>
+                            <li>선택된 교실의 장비들도 대표교실로 합쳐집니다.</li>
+                            <li>이 작업은 되돌릴 수 없습니다.</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeMergeModal()">취소</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-compress-alt"></i> 병합 실행
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 교실 수정 모달 -->
+    <div id="editModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> 교실명 수정</h3>
+                <span class="close" onclick="closeEditModal()">&times;</span>
+            </div>
+            <form id="editForm" action="/classroom/update" method="post">
+                <input type="hidden" id="editClassroomId" name="classroomId">
+                <input type="hidden" name="schoolId" th:value="${selectedSchoolId}">
+                
+                <div class="modal-body">
+                    <div class="form-group-modern">
+                        <label for="editRoomName">교실명</label>
+                        <input type="text" id="editRoomName" name="roomName" required>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 저장
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <main>
+        <div class="classroom-manage-container">
+            <div class="classroom-container">
+                <!-- 모던 헤더 -->
+                <div class="modern-header">
+                    <h1><i class="fas fa-door-open" style="margin-right: 0.5rem;"></i>교실 관리</h1>
+                    <p class="subtitle">학교별 교실을 관리하고 중복 교실을 정리할 수 있습니다.</p>
+                </div>
+
+                <!-- 알림 메시지 -->
+                <div th:if="${success}" class="alert alert-success">
+                    <i class="fas fa-check-circle" style="margin-right: 0.5rem;"></i>
+                    <span th:text="${success}"></span>
+                </div>
+                
+                <div th:if="${error}" class="alert alert-error">
+                    <i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i>
+                    <span th:text="${error}"></span>
+                </div>
+
+                <!-- 학교 선택 -->
+                <div class="school-select-card">
+                    <div class="section-header-modern">
+                        <i class="fas fa-school"></i>
+                        <h2>학교 선택</h2>
+                    </div>
+                    <form method="get" action="/classroom/manage">
+                        <div class="form-group-modern">
+                            <label for="schoolId">관리할 학교를 선택하세요</label>
+                            <select name="schoolId" id="schoolId" onchange="this.form.submit()">
+                                <option value="">학교를 선택하세요</option>
+                                <option th:each="school : ${schools}" 
+                                        th:value="${school.schoolId}" 
+                                        th:text="${school.schoolName}"
+                                        th:selected="${school.schoolId == selectedSchoolId}">
+                                </option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- 선택된 학교의 교실 관리 -->
+                <div th:if="${selectedSchoolId != null}">
+                    <!-- 통계 정보 -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number" th:text="${#lists.size(classrooms)}">0</div>
+                            <div class="stat-label">전체 교실</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" th:text="${#maps.size(duplicateGroups)}">0</div>
+                            <div class="stat-label">중복 그룹</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="emptyRoomsCount">0</div>
+                            <div class="stat-label">빈 교실</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="usedRoomsCount">0</div>
+                            <div class="stat-label">사용 중 교실</div>
+                        </div>
+                    </div>
+
+                    <!-- 새 교실 추가 -->
+                    <div class="section-card">
+                        <div class="section-header-modern">
+                            <i class="fas fa-plus"></i>
+                            <h2>새 교실 추가</h2>
+                        </div>
+                        <div class="section-content">
+                            <form th:action="@{/classroom/add}" method="post" class="form-inline">
+                                <input type="hidden" name="schoolId" th:value="${selectedSchoolId}">
+                                <input type="text" name="roomName" placeholder="교실명 입력 (예: 1학년 1반)" required>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-plus"></i> 추가
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- 전체 교실 목록 -->
+                    <div class="section-card">
+                        <div class="section-header-modern">
+                            <i class="fas fa-list"></i>
+                            <h2>전체 교실 목록</h2>
+                            <button type="button" class="btn btn-warning duplicate-check-btn" id="duplicateCheckBtn" onclick="selectForDuplicateManagement()" disabled>
+                                <i class="fas fa-arrow-right"></i> 중복교실 선택 (<span id="selectedCount">0</span>개 선택)
+                            </button>
+                            <span class="badge" th:text="|${classrooms != null ? #lists.size(classrooms) : 0}개 교실|"></span>
+                        </div>
+                        <div class="section-content">
+                            <!-- 전체 선택 컨트롤 -->
+                            <div class="bulk-select-controls-classroom" th:if="${classrooms != null and !classrooms.isEmpty()}">
+                                <label class="checkbox-container">
+                                    <input type="checkbox" id="selectAllClassrooms" onchange="toggleAllClassrooms(this)">
+                                    <span class="checkmark"></span>
+                                    <span>모두 선택</span>
+                                </label>
+                                <span class="selected-info" id="selectedClassroomsInfo">0개 교실 선택됨</span>
+                            </div>
+                            
+                            <div th:if="${classrooms != null and !classrooms.isEmpty()}" class="classroom-list-section">
+                                <div class="classroom-grid">
+                                    <div th:each="classroom : ${classrooms}" class="classroom-card" th:attr="data-classroom-id=${classroom.classroomId}">
+                                        <div class="classroom-order-input-container">
+                                            <label for="order-input-${classroom.classroomId}" class="order-label">순서</label>
+                                            <input type="number" 
+                                                   class="classroom-order-input" 
+                                                   th:id="'order-input-' + ${classroom.classroomId}"
+                                                   th:value="${classroom.displayOrder != null ? classroom.displayOrder : ''}"
+                                                   th:attr="data-classroom-id=${classroom.classroomId}, data-school-id=${selectedSchoolId}"
+                                                   min="1"
+                                                   onchange="updateClassroomOrder(this)"
+                                                   placeholder="순서">
+                                        </div>
+                                        <div class="classroom-header">
+                                            <label class="checkbox-container classroom-checkbox-container">
+                                                <input type="checkbox" class="classroom-checkbox" 
+                                                       th:attr="data-classroom-id=${classroom.classroomId},data-room-name=${classroom.roomName}"
+                                                       onchange="updateClassroomSelection()">
+                                                <span class="checkmark"></span>
+                                            </label>
+                                            <div class="classroom-name" th:text="${classroom.roomName}"></div>
+                                        </div>
+                                        <div class="classroom-info">
+                                            ID: <span class="classroom-id" th:text="${classroom.classroomId}"></span><br>
+                                            사용 현황: <span class="usage-info" th:attr="data-classroom-id=${classroom.classroomId}">로딩 중...</span>
+                                        </div>
+                                        <div class="classroom-actions">
+                                            <button type="button" class="btn btn-primary edit-classroom-btn" 
+                                                    th:attr="data-classroom-id=${classroom.classroomId}, data-room-name=${classroom.roomName}">
+                                                <i class="fas fa-edit"></i> 수정
+                                            </button>
+                                            <button type="button" class="btn btn-danger delete-classroom-btn" 
+                                                    th:attr="data-classroom-id=${classroom.classroomId}, data-room-name=${classroom.roomName}">
+                                                <i class="fas fa-trash"></i> 삭제
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div th:if="${classrooms == null or classrooms.isEmpty()}" class="empty-state">
+                                <i class="fas fa-inbox"></i>
+                                <p>아직 등록된 교실이 없습니다.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 중복 교실 관리 -->
+                    <div class="section-card">
+                        <div class="section-header-modern">
+                            <i class="fas fa-compress-alt"></i>
+                            <h2>중복 교실 관리</h2>
+                            <span class="badge" th:text="|${duplicateGroups != null ? #maps.size(duplicateGroups) : 0}개 그룹|"></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="duplicate-section" th:if="${duplicateGroups != null and !duplicateGroups.isEmpty()}">
+                                <!-- 전체 선택 및 모두 병합 컨트롤 -->
+                                <div class="bulk-merge-controls">
+                                    <div class="bulk-select-container">
+                                        <label class="checkbox-container">
+                                            <input type="checkbox" id="selectAllGroups" onchange="toggleAllGroups(this)">
+                                            <span class="checkmark"></span>
+                                            <span>모두 선택</span>
+                                        </label>
+                                        <span class="selected-count" id="selectedGroupsCount">0개 그룹 선택됨</span>
+                                    </div>
+                                    <div class="bulk-actions">
+                                        <button type="button" class="btn btn-primary bulk-merge-btn" 
+                                                id="bulkMergeBtn" onclick="performBulkMerge()" disabled>
+                                            <i class="fas fa-layer-group"></i> 모두 병합 (<span id="bulkMergeCount">0</span>개 그룹)
+                                        </button>
+                                        <button type="button" class="btn btn-danger bulk-remove-btn" 
+                                                onclick="removeAllGroups()">
+                                            <i class="fas fa-trash-alt"></i> 모든 그룹 삭제
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- 중복 그룹들 -->
+                                <div th:each="entry : ${duplicateGroups}" class="duplicate-group">
+                                    <div class="duplicate-header">
+                                        <label class="checkbox-container">
+                                            <input type="checkbox" class="group-checkbox" 
+                                                   th:attr="data-group-key=${entry.key},data-first-room-name=${entry.value[0].roomName}"
+                                                   onchange="updateGroupSelection()">
+                                            <span class="checkmark"></span>
+                                        </label>
+                                        <span>유사한 교실명: "<span th:text="${entry.key}"></span>" 그룹</span>
+                                    </div>
+                                    <div class="duplicate-items">
+                                        <div th:each="classroom : ${entry.value}" class="duplicate-item">
+                                            <div class="classroom-name" th:text="${classroom.roomName}"></div>
+                                            <div class="classroom-info">
+                                                ID: <span class="classroom-id" th:text="${classroom.classroomId}"></span> |
+                                                사용 현황: <span class="usage-info" th:attr="data-classroom-id=${classroom.classroomId}">로딩 중...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="group-actions">
+                                        <button type="button" class="btn btn-warning merge-btn" 
+                                                th:attr="data-group-key=${entry.key}">
+                                            <i class="fas fa-compress-alt"></i> 병합하기
+                                        </button>
+                                        <button type="button" class="btn btn-danger remove-group-btn" 
+                                                th:attr="data-group-key=${entry.key},data-first-room-name=${entry.value[0].roomName}"
+                                                onclick="removeGroup(this)">
+                                            <i class="fas fa-trash-alt"></i> 그룹 삭제
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div th:if="${duplicateGroups == null or duplicateGroups.isEmpty()}" class="empty-state">
+                                <i class="fas fa-check-circle"></i>
+                                <p>중복된 교실이 없습니다! 🎉</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 교실 수정 모달 -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fas fa-edit"></i> 교실명 수정
+            </div>
+            <form id="editForm" th:action="@{/classroom/update}" method="post">
+                <div class="modal-body">
+                    <input type="hidden" name="classroomId" id="editClassroomId">
+                    <input type="hidden" name="schoolId" th:value="${selectedSchoolId}">
+                    <div class="form-field">
+                        <label for="editRoomName">교실명</label>
+                        <input type="text" id="editRoomName" name="roomName" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
+                    <button type="submit" class="btn btn-primary">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 교실 병합 모달 -->
+    <div id="mergeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fas fa-compress-alt"></i> 교실 병합
+            </div>
+            <form id="mergeForm" th:action="@{/classroom/merge}" method="post">
+                <div class="modal-body">
+                    <input type="hidden" name="schoolId" th:value="${selectedSchoolId}">
+                    <div class="form-field">
+                        <label>병합할 교실들</label>
+                        <div id="mergeClassroomsList"></div>
+                    </div>
+                    <div class="form-field">
+                        <label for="mergeNewRoomName">통합 후 교실명</label>
+                        <input type="text" id="mergeNewRoomName" name="newRoomName" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="mergeTargetId">대표 교실 선택 (데이터가 여기로 통합됩니다)</label>
+                        <select id="mergeTargetId" name="targetId" required></select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeMergeModal()">취소</button>
+                    <button type="submit" class="btn btn-warning">병합하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 진행 상황 모달 -->
+    <div id="progressModal" class="progress-modal">
+        <div class="progress-modal-content">
+            <div class="progress-icon">
+                <i class="fas fa-sync-alt"></i>
+            </div>
+            <div class="progress-title" id="progressTitle">
+                교실 병합 중...
+            </div>
+            <div class="progress-message" id="progressMessage">
+                작업을 처리하고 있습니다. 잠시만 기다려 주세요.
+            </div>
+            <div class="progress-bar-container" id="progressBarContainer" style="display: none;">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-details" id="progressDetails">
+                
+            </div>
+        </div>
+    </div>
+
+    <div th:replace="~{fragments/footer :: footer}"></div>
+
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        // 서버 데이터
+        var selectedSchoolId = /*[[${selectedSchoolId}]]*/ null;
+        
+        // 교실 선택 관련 변수
+        var selectedClassrooms = [];
+        
+        // 교실 선택 관련 함수들
+        function toggleAllClassrooms(selectAllCheckbox) {
+            console.log('=== TOGGLE ALL CLASSROOMS ===');
+            const checkboxes = document.querySelectorAll('.classroom-checkbox');
+            const isChecked = selectAllCheckbox.checked;
+            
+            checkboxes.forEach(function(checkbox) {
+                checkbox.checked = isChecked;
+                const card = checkbox.closest('.classroom-card');
+                if (isChecked) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+            
+            updateClassroomSelection();
+        }
+        
+        function updateClassroomSelection() {
+            console.log('=== UPDATE CLASSROOM SELECTION ===');
+            const checkboxes = document.querySelectorAll('.classroom-checkbox');
+            const checkedBoxes = document.querySelectorAll('.classroom-checkbox:checked');
+            const selectAllCheckbox = document.getElementById('selectAllClassrooms');
+            const selectedCount = checkedBoxes.length;
+            
+            // 선택된 교실 정보 수집
+            selectedClassrooms = [];
+            checkedBoxes.forEach(function(checkbox) {
+                const classroomId = checkbox.getAttribute('data-classroom-id');
+                const roomName = checkbox.getAttribute('data-room-name');
+                selectedClassrooms.push({
+                    classroomId: parseInt(classroomId),
+                    roomName: roomName
+                });
+                
+                // 카드 스타일 업데이트
+                const card = checkbox.closest('.classroom-card');
+                card.classList.add('selected');
+            });
+            
+            // 체크되지 않은 카드들의 선택 스타일 제거
+            checkboxes.forEach(function(checkbox) {
+                if (!checkbox.checked) {
+                    const card = checkbox.closest('.classroom-card');
+                    card.classList.remove('selected');
+                }
+            });
+            
+            // 전체 선택 체크박스 상태 업데이트
+            if (selectAllCheckbox) {
+                if (selectedCount === 0) {
+                    selectAllCheckbox.indeterminate = false;
+                    selectAllCheckbox.checked = false;
+                } else if (selectedCount === checkboxes.length) {
+                    selectAllCheckbox.indeterminate = false;
+                    selectAllCheckbox.checked = true;
+                } else {
+                    selectAllCheckbox.indeterminate = true;
+                    selectAllCheckbox.checked = false;
+                }
+            }
+            
+            // UI 업데이트
+            const selectedInfo = document.getElementById('selectedClassroomsInfo');
+            const selectedCountSpan = document.getElementById('selectedCount');
+            const duplicateCheckBtn = document.getElementById('duplicateCheckBtn');
+            
+            if (selectedInfo) {
+                selectedInfo.textContent = `${selectedCount}개 교실 선택됨`;
+            }
+            
+            if (selectedCountSpan) {
+                selectedCountSpan.textContent = selectedCount;
+            }
+            
+            if (duplicateCheckBtn) {
+                duplicateCheckBtn.disabled = selectedCount < 2;
+            }
+            
+            console.log('Selected classrooms:', selectedClassrooms);
+        }
+        
+
+
+        // 스크롤 위치 저장 및 복원 함수들
+        function saveScrollPosition() {
+            const scrollY = window.scrollY || window.pageYOffset;
+            const scrollX = window.scrollX || window.pageXOffset;
+            localStorage.setItem('classroomManageScrollY', scrollY);
+            localStorage.setItem('classroomManageScrollX', scrollX);
+            console.log('Saved scroll position:', { x: scrollX, y: scrollY });
+        }
+
+        function restoreScrollPosition() {
+            const savedScrollY = localStorage.getItem('classroomManageScrollY');
+            const savedScrollX = localStorage.getItem('classroomManageScrollX');
+            
+            if (savedScrollY !== null && savedScrollX !== null) {
+                const scrollY = parseInt(savedScrollY);
+                const scrollX = parseInt(savedScrollX);
+                
+                console.log('Restoring scroll position:', { x: scrollX, y: scrollY });
+                
+                // 부드러운 스크롤로 이동
+                window.scrollTo({
+                    left: scrollX,
+                    top: scrollY,
+                    behavior: 'smooth'
+                });
+                
+                // 복원 후 저장된 위치 제거
+                localStorage.removeItem('classroomManageScrollY');
+                localStorage.removeItem('classroomManageScrollX');
+            }
+        }
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('=== PAGE LOADED ===');
+            console.log('Selected school ID:', selectedSchoolId);
+            
+            // 디버깅용 함수들 전역 등록
+            window.debugModal = {
+                checkStatus: function() {
+                    const modal = document.getElementById('progressModal');
+                    if (modal) {
+                        console.log('Progress Modal Status:', {
+                            display: modal.style.display,
+                            visibility: modal.style.visibility,
+                            opacity: modal.style.opacity,
+                            offsetParent: modal.offsetParent,
+                            isVisible: modal.offsetParent !== null
+                        });
+                    } else {
+                        console.log('Progress modal element not found');
+                    }
+                },
+                forceHide: function() {
+                    forceCloseProgressModal();
+                },
+                show: function() {
+                    showProgressModal('테스트', '테스트 메시지');
+                }
+            };
+            
+            // 디버깅 함수 안내
+            console.log('📋 디버깅 함수들:');
+            console.log('- debugModal.checkStatus(): 모달 상태 확인');
+            console.log('- debugModal.forceHide(): 모달 강제 닫기');
+            console.log('- debugModal.show(): 테스트 모달 표시');
+            
+            // 저장된 스크롤 위치 복원
+            setTimeout(restoreScrollPosition, 100);
+            
+            // 사용현황 로드
+            loadAllUsageInfo();
+            
+            // 버튼 이벤트 위임으로 등록 (동적 생성 요소 대응)
+            document.addEventListener('click', function(e) {
+                // 수정 버튼 처리
+                if (e.target && (e.target.classList.contains('edit-classroom-btn') || e.target.closest('.edit-classroom-btn'))) {
+                    const btn = e.target.classList.contains('edit-classroom-btn') ? e.target : e.target.closest('.edit-classroom-btn');
+                    const classroomId = btn.getAttribute('data-classroom-id');
+                    const roomName = btn.getAttribute('data-room-name');
+                    openEditModal(classroomId, roomName);
+                    return;
+                }
+                
+                // 삭제 버튼 처리
+                if (e.target && (e.target.classList.contains('delete-classroom-btn') || e.target.closest('.delete-classroom-btn'))) {
+                    const btn = e.target.classList.contains('delete-classroom-btn') ? e.target : e.target.closest('.delete-classroom-btn');
+                    const classroomId = btn.getAttribute('data-classroom-id');
+                    const roomName = btn.getAttribute('data-room-name');
+                    confirmDelete(classroomId, roomName);
+                    return;
+                }
+                
+                // 병합 버튼 처리
+                if (e.target && e.target.classList.contains('merge-btn')) {
+                    e.preventDefault();
+                    console.log('=== MERGE BUTTON CLICKED ===');
+                    
+                    const groupKey = e.target.getAttribute('data-group-key');
+                    console.log('Group key:', groupKey);
+                    
+                    // 교실 정보 수집
+                    const duplicateGroup = e.target.closest('.duplicate-group');
+                    if (!duplicateGroup) {
+                        console.error('Could not find duplicate group!');
+                        alert('오류: 중복 그룹을 찾을 수 없습니다.');
+                        return;
+                    }
+                    
+                    const duplicateItems = duplicateGroup.querySelectorAll('.duplicate-item');
+                    console.log('Found duplicate items:', duplicateItems.length);
+                    
+                    const classrooms = [];
+                    duplicateItems.forEach((item, idx) => {
+                        const nameEl = item.querySelector('.classroom-name');
+                        const idEl = item.querySelector('.classroom-id');
+                        
+                        if (nameEl && idEl) {
+                            const classroomId = parseInt(idEl.textContent.trim());
+                            const roomName = nameEl.textContent.trim();
+                            
+                            if (!isNaN(classroomId) && roomName) {
+                                classrooms.push({ classroomId, roomName });
+                                console.log(`Added classroom: ${roomName} (ID: ${classroomId})`);
+                            }
+                        }
+                    });
+                    
+                    if (classrooms.length >= 2) {
+                        openMergeModal(groupKey, classrooms);
+                    } else {
+                        alert('병합할 교실이 충분하지 않습니다. 최소 2개 이상의 교실이 필요합니다.');
+                    }
+                }
+            });
+            
+            // 폼 제출 이벤트 처리
+        document.addEventListener('submit', function(e) {
+            // 교실 수정 폼 제출
+            if (e.target && e.target.id === 'editForm') {
+                e.preventDefault();
+                submitEditForm(e.target);
+                return;
+            }
+
+                // 병합 폼 제출 
+                if (e.target && e.target.id === 'mergeForm') {
+                    console.log('=== MERGE FORM SUBMIT ===');
+                    e.preventDefault();
+                    
+                    // 폼 데이터 검증 및 로깅
+                    console.log('Form element before submission:', e.target);
+                    console.log('Form HTML:', e.target.outerHTML);
+                    
+                    const formData = new FormData(e.target);
+                    console.log('Form data before submission:');
+                    let hasTargetId = false;
+                    for (let [key, value] of formData.entries()) {
+                        console.log(`  ${key}: ${value}`);
+                        if (key === 'targetId') hasTargetId = true;
+                    }
+                    
+                    if (!hasTargetId) {
+                        console.error('❌ targetId가 FormData에 없습니다!');
+                    } else {
+                        console.log('✅ targetId가 FormData에 있습니다.');
+                    }
+                    
+                    // targetId 특별 확인
+                    const targetSelect = document.getElementById('mergeTargetId');
+                    console.log('Target select element:', targetSelect);
+                    if (targetSelect) {
+                        console.log('Target select properties:');
+                        console.log('  - value:', targetSelect.value);
+                        console.log('  - name:', targetSelect.name);
+                        console.log('  - disabled:', targetSelect.disabled);
+                        console.log('  - options length:', targetSelect.options.length);
+                        console.log('  - selectedIndex:', targetSelect.selectedIndex);
+                        console.log('  - form:', targetSelect.form ? targetSelect.form.id : 'NO FORM');
+                        console.log('  - parentNode:', targetSelect.parentNode ? targetSelect.parentNode.tagName : 'NO PARENT');
+                        
+                        // 모든 옵션 출력
+                        for (let i = 0; i < targetSelect.options.length; i++) {
+                            const option = targetSelect.options[i];
+                            console.log(`  - option[${i}]: value="${option.value}", text="${option.text}", selected=${option.selected}`);
+                        }
+                    } else {
+                        console.error('❌ mergeTargetId 요소를 찾을 수 없습니다!');
+                    }
+                    
+                    if (confirmMerge()) {
+                        console.log('User confirmed, submitting form...');
+                        
+                        // 최종 targetId 검증
+                        const finalTargetId = document.getElementById('mergeTargetId').value;
+                        if (!finalTargetId) {
+                            alert('오류: 대표 교실이 선택되지 않았습니다. 다시 시도해주세요.');
+                            return;
+                        }
+                        
+                        console.log('Final targetId before submission:', finalTargetId);
+                        
+                        // targetId를 확실히 전송하기 위해 hidden input으로도 추가
+                        let hiddenTargetInput = document.getElementById('hiddenTargetId');
+                        if (!hiddenTargetInput) {
+                            hiddenTargetInput = document.createElement('input');
+                            hiddenTargetInput.type = 'hidden';
+                            hiddenTargetInput.id = 'hiddenTargetId';
+                            hiddenTargetInput.name = 'targetId';
+                            e.target.appendChild(hiddenTargetInput);
+                        }
+                        hiddenTargetInput.value = finalTargetId;
+                        console.log('Added hidden targetId input with value:', finalTargetId);
+                        
+                        // 스크롤 위치 저장
+                        saveScrollPosition();
+                        
+                        // 모달이 보이는 상태에서 폼 제출
+                        console.log('Modal display style before submit:', document.getElementById('mergeModal').style.display);
+                        
+                        // 진행 모달을 먼저 표시하지 말고 폼 제출 후에 표시
+                        // FormData 재확인
+                        const finalFormData = new FormData(e.target);
+                        console.log('Final form data just before submit:');
+                        for (let [key, value] of finalFormData.entries()) {
+                            console.log(`  FINAL ${key}: ${value}`);
+                        }
+                        
+                        // 폼 제출
+                        e.target.submit();
+                        
+                    } else {
+                        console.log('User cancelled merge');
+                    }
+                }
+            });
+        });
+
+
+
+        // 모든 교실의 사용 현황 정보 로드
+        function loadAllUsageInfo() {
+            const usageElements = document.querySelectorAll('.usage-info');
+            console.log('Total usage elements found:', usageElements.length);
+            
+            let emptyCount = 0;
+            let usedCount = 0;
+            
+            if (usageElements.length === 0) {
+                console.warn('No usage elements found to load!');
+                return;
+            }
+            
+            // 모든 교실 ID 수집해서 로깅
+            const allClassroomIds = [];
+            usageElements.forEach((element, index) => {
+                const classroomId = element.getAttribute('data-classroom-id');
+                allClassroomIds.push(classroomId);
+                console.log(`Element ${index + 1}: data-classroom-id="${classroomId}", outerHTML="${element.outerHTML.substring(0, 200)}..."`);
+            });
+            console.log('All classroom IDs found:', allClassroomIds);
+            
+            usageElements.forEach((element, index) => {
+                const classroomId = element.getAttribute('data-classroom-id');
+                console.log(`Processing element ${index + 1}/${usageElements.length}: classroom ID ${classroomId}`);
+                
+                if (classroomId && classroomId !== 'null' && classroomId !== '') {
+                    loadUsageInfo(classroomId, element, (isEmpty) => {
+                        if (isEmpty) {
+                            emptyCount++;
+                            element.closest('.classroom-card')?.classList.add('empty');
+                        } else {
+                            usedCount++;
+                            element.closest('.classroom-card')?.classList.add('in-use');
+                        }
+                        
+                        // 통계 업데이트
+                        const emptyCountEl = document.getElementById('emptyRoomsCount');
+                        const usedCountEl = document.getElementById('usedRoomsCount');
+                        
+                        if (emptyCountEl) emptyCountEl.textContent = emptyCount;
+                        if (usedCountEl) usedCountEl.textContent = usedCount;
+                        
+                        console.log(`Stats updated: empty=${emptyCount}, used=${usedCount}`);
+                    });
+                } else {
+                    console.error(`Invalid classroom ID: "${classroomId}"`);
+                    element.textContent = '오류: 잘못된 ID';
+                    element.style.color = '#ef4444';
+                }
+            });
+        }
+
+        // 개별 교실 사용 현황 로드
+        function loadUsageInfo(classroomId, element, callback) {
+            console.log('Loading usage info for classroom:', classroomId);
+            
+            if (!classroomId || classroomId === 'null' || classroomId === '' || isNaN(parseInt(classroomId))) {
+                console.error('Invalid classroom ID provided:', classroomId);
+                element.textContent = '오류: 잘못된 ID';
+                element.style.color = '#ef4444';
+                callback && callback(false);
+                return;
+            }
+            
+            // ID를 정수로 변환하여 검증
+            const numericId = parseInt(classroomId);
+            if (numericId <= 0) {
+                console.error('Invalid numeric classroom ID:', numericId);
+                element.textContent = '오류: 잘못된 ID 형식';
+                element.style.color = '#ef4444';
+                callback && callback(false);
+                return;
+            }
+            
+            // 임시로 기본값 표시 (API 오류 해결 전까지)
+            element.textContent = '사용현황 확인 중...';
+            element.style.color = '#6b7280';
+            element.style.fontWeight = '500';
+            
+            const url = `/classroom/api/usage/${numericId}`;
+            console.log('Fetching from URL:', url, 'for classroom ID:', numericId);
+            
+            // 타임아웃 설정 (5초)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                signal: controller.signal
+            })
+                .then(response => {
+                    clearTimeout(timeoutId);
+                    console.log(`Response for classroom ${classroomId}:`, response.status, response.statusText);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log(`Usage data for classroom ${classroomId}:`, data);
+                    const deviceCount = data.deviceCount || 0;
+                    const wirelessApCount = data.wirelessApCount || 0;
+                    const totalCount = deviceCount + wirelessApCount;
+                    
+                    if (totalCount === 0) {
+                        element.textContent = '비어있음';
+                        element.style.color = '#10b981';
+                        element.style.fontWeight = '600';
+                        callback && callback(true);
+                    } else {
+                        element.textContent = `장비 ${deviceCount}개, 무선AP ${wirelessApCount}개`;
+                        element.style.color = '#f59e0b';
+                        element.style.fontWeight = '600';
+                        callback && callback(false);
+                    }
+                })
+                .catch(error => {
+                    clearTimeout(timeoutId);
+                    if (error.name === 'AbortError') {
+                        console.warn(`API timeout for classroom ${numericId}`);
+                        element.textContent = '조회 시간 초과';
+                    } else {
+                        console.error(`Error loading usage for classroom ${numericId}:`, error);
+                        console.error('Error details:', {
+                            message: error.message,
+                            name: error.name,
+                            stack: error.stack
+                        });
+                        
+                        if (error.message && error.message.includes('404')) {
+                            element.textContent = '교실이 존재하지 않음';
+                        } else if (error.message && error.message.includes('500')) {
+                            element.textContent = '서버 오류';
+                        } else {
+                            element.textContent = '조회 불가';
+                        }
+                    }
+                    element.style.color = '#6b7280';
+                    element.style.fontWeight = '500';
+                    element.style.fontStyle = 'italic';
+                    callback && callback(false);
+                });
+        }
+
+        // 교실 수정 모달 열기
+        function openEditModal(classroomId, roomName) {
+            document.getElementById('editClassroomId').value = classroomId;
+            document.getElementById('editRoomName').value = roomName;
+            document.getElementById('editModal').style.display = 'block';
+        }
+
+        // 교실 수정 모달 닫기
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        function updateClassroomNameInUI(classroomId, newRoomName) {
+            const idString = String(classroomId);
+            const sanitizedName = newRoomName;
+
+            const editButton = document.querySelector(`.classroom-card .edit-classroom-btn[data-classroom-id="${idString}"]`);
+            if (editButton) {
+                const card = editButton.closest('.classroom-card');
+                if (card) {
+                    const nameElement = card.querySelector('.classroom-name');
+                    if (nameElement) {
+                        nameElement.textContent = sanitizedName;
+                    }
+                    const checkbox = card.querySelector('.classroom-checkbox');
+                    if (checkbox) {
+                        checkbox.setAttribute('data-room-name', sanitizedName);
+                    }
+                    const deleteButton = card.querySelector('.delete-classroom-btn');
+                    if (deleteButton) {
+                        deleteButton.setAttribute('data-room-name', sanitizedName);
+                    }
+                    editButton.setAttribute('data-room-name', sanitizedName);
+                }
+            }
+
+            document.querySelectorAll('.duplicate-item').forEach(item => {
+                const idElement = item.querySelector('.classroom-id');
+                if (idElement && idElement.textContent.trim() === idString) {
+                    const nameElement = item.querySelector('.classroom-name');
+                    if (nameElement) {
+                        nameElement.textContent = sanitizedName;
+                    }
+                }
+            });
+        }
+
+        async function submitEditForm(formElement) {
+            const classroomIdInput = document.getElementById('editClassroomId');
+            const roomNameInput = document.getElementById('editRoomName');
+            const classroomId = classroomIdInput.value;
+            const schoolIdInput = formElement.querySelector('input[name="schoolId"]');
+            const schoolId = schoolIdInput ? schoolIdInput.value : '';
+            const roomName = roomNameInput.value.trim();
+
+            if (!classroomId) {
+                alert('교실 정보를 확인할 수 없습니다. 페이지를 새로고침한 후 다시 시도해주세요.');
+                return;
+            }
+
+            if (!roomName) {
+                alert('교실명을 입력해주세요.');
+                roomNameInput.focus();
+                return;
+            }
+
+            if (!schoolId) {
+                alert('학교 정보를 확인할 수 없습니다. 페이지를 새로고침한 후 다시 시도해주세요.');
+                return;
+            }
+
+            const numericClassroomId = Number(classroomId);
+            if (!Number.isFinite(numericClassroomId)) {
+                alert('교실 정보가 올바르지 않습니다.');
+                return;
+            }
+
+            const numericSchoolId = Number(schoolId);
+            if (!Number.isFinite(numericSchoolId)) {
+                alert('학교 정보가 올바르지 않습니다.');
+                return;
+            }
+
+            const payload = {
+                classroomId: numericClassroomId,
+                schoolId: numericSchoolId,
+                roomName: roomName
+            };
+
+            const submitButton = formElement.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = true;
+            }
+
+            try {
+                const response = await fetch('/classroom/update/ajax', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok || !data.success) {
+                    const message = data && data.message ? data.message : '교실명 수정 중 오류가 발생했습니다.';
+                    alert(message);
+                    return;
+                }
+
+                updateClassroomNameInUI(numericClassroomId, roomName);
+                closeEditModal();
+                alert(data.message || '교실명이 성공적으로 수정되었습니다.');
+            } catch (error) {
+                console.error('교실명 수정 중 오류:', error);
+                alert('교실명 수정 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+            } finally {
+                if (submitButton) {
+                    submitButton.disabled = false;
+                }
+            }
+        }
+
+        // 교실 병합 모달 열기
+        function openMergeModal(groupKey, classrooms) {
+            console.log('=== OPENING MERGE MODAL ===');
+            console.log('Group key:', groupKey);
+            console.log('Classrooms to merge:', classrooms);
+            
+            const modal = document.getElementById('mergeModal');
+            const list = document.getElementById('mergeClassroomsList');
+            const targetSelect = document.getElementById('mergeTargetId');
+            const mergeNameInput = document.getElementById('mergeNewRoomName');
+            
+            console.log('Modal elements check:', {
+                modal: !!modal,
+                list: !!list,
+                targetSelect: !!targetSelect,
+                mergeNameInput: !!mergeNameInput
+            });
+            
+            if (!modal || !list || !targetSelect || !mergeNameInput) {
+                console.error('Modal elements not found!', {modal, list, targetSelect, mergeNameInput});
+                alert('모달 요소를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+                return;
+            }
+            
+            // 교실 목록 표시
+            list.innerHTML = '';
+            classrooms.forEach((classroom, index) => {
+                console.log(`Adding classroom ${index}: `, classroom);
+                const div = document.createElement('div');
+                div.className = 'merge-item';
+                div.innerHTML = `
+                    <input type="checkbox" name="sourceIds" value="${classroom.classroomId}" checked style="margin-right: 0.5rem;">
+                    <i class="fas fa-door-open" style="color: #60a5fa;"></i>
+                    <span><strong>${classroom.roomName}</strong> (ID: ${classroom.classroomId})</span>
+                `;
+                list.appendChild(div);
+            });
+            
+            // 대표 교실 선택 옵션
+            targetSelect.innerHTML = '';
+            console.log('Creating target select options...');
+            classrooms.forEach((classroom, index) => {
+                const option = document.createElement('option');
+                option.value = classroom.classroomId;
+                option.textContent = `${classroom.roomName} (ID: ${classroom.classroomId})`;
+                if (index === 0) option.selected = true; // 첫 번째를 기본 선택
+                targetSelect.appendChild(option);
+                console.log(`Added option ${index}: value="${option.value}", text="${option.text}", selected=${option.selected}`);
+            });
+            
+            // 최종 확인
+            console.log('Target select final state:');
+            console.log('  - Options count:', targetSelect.options.length);
+            console.log('  - Selected index:', targetSelect.selectedIndex);
+            console.log('  - Selected value:', targetSelect.value);
+            console.log('  - Name attribute:', targetSelect.name);
+            
+            // 기본 통합명 설정 (그룹 키에서 특수문자 제거하여 깔끔한 이름 제안)
+            if (classrooms.length > 0) {
+                // 가장 일반적인 형태의 교실명을 제안
+                const roomNames = classrooms.map(c => c.roomName);
+                let commonName = groupKey;
+                
+                // 괄호나 특수문자 제거
+                commonName = commonName.replace(/[()[\]]/g, '').trim();
+                
+                // 숫자가 포함된 경우 더 일반적인 형태로 변환
+                if (/\d/.test(commonName)) {
+                    // 예: "1학년1반", "1-1", "101호" 등을 더 표준적인 형태로
+                    commonName = roomNames[0]; // 첫 번째 교실명을 기본으로 사용
+                }
+                
+                mergeNameInput.value = commonName;
+                console.log('Set default merge name:', commonName);
+            }
+            
+            // 모달 표시
+            modal.style.display = 'block';
+            
+            // 입력 필드에 포커스
+            setTimeout(() => {
+                mergeNameInput.focus();
+                mergeNameInput.select();
+            }, 100);
+            
+            console.log('Merge modal opened successfully');
+        }
+
+        // 교실 병합 모달 닫기
+        function closeMergeModal() {
+            console.log('Closing merge modal');
+            const modal = document.getElementById('mergeModal');
+            if (modal) {
+                modal.style.display = 'none';
+                // 폼 초기화
+                const form = document.getElementById('mergeForm');
+                if (form) {
+                    form.reset();
+                }
+                // 동적 콘텐츠 초기화
+                const list = document.getElementById('mergeClassroomsList');
+                if (list) {
+                    list.innerHTML = '';
+                }
+                const targetSelect = document.getElementById('mergeTargetId');
+                if (targetSelect) {
+                    targetSelect.innerHTML = '';
+                }
+            }
+        }
+
+        // 진행 상황 모달 표시
+        function showProgressModal(title, message, showProgressBar = false) {
+            const modal = document.getElementById('progressModal');
+            const titleEl = document.getElementById('progressTitle');
+            const messageEl = document.getElementById('progressMessage');
+            const progressBarContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            const detailsEl = document.getElementById('progressDetails');
+            
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            detailsEl.textContent = '';
+            
+            if (showProgressBar) {
+                progressBarContainer.style.display = 'block';
+                progressBar.style.width = '0%';
+            } else {
+                progressBarContainer.style.display = 'none';
+            }
+            
+            modal.style.display = 'block';
+        }
+
+        // 진행 상황 업데이트
+        function updateProgress(progress, details = '') {
+            const progressBar = document.getElementById('progressBar');
+            const detailsEl = document.getElementById('progressDetails');
+            
+            if (progressBar) {
+                progressBar.style.width = progress + '%';
+            }
+            
+            if (details && detailsEl) {
+                detailsEl.textContent = details;
+            }
+        }
+
+        // 진행 상황 모달 닫기
+        function hideProgressModal() {
+            const modal = document.getElementById('progressModal');
+            modal.style.display = 'none';
+        }
+
+        // 병합 확인
+        function confirmMerge() {
+            console.log('=== CONFIRMING MERGE ===');
+            
+            const newRoomName = document.getElementById('mergeNewRoomName').value.trim();
+            const checkedBoxes = document.querySelectorAll('input[name="sourceIds"]:checked');
+            const targetSelect = document.getElementById('mergeTargetId');
+            
+            console.log('Merge confirmation data:', {
+                newRoomName: newRoomName,
+                checkedBoxesCount: checkedBoxes.length,
+                targetValue: targetSelect.value
+            });
+            
+            if (!newRoomName) {
+                alert('새로운 교실명을 입력해주세요.');
+                document.getElementById('mergeNewRoomName').focus();
+                return false;
+            }
+            
+            if (checkedBoxes.length < 2) {
+                alert('병합할 교실을 최소 2개 이상 선택해주세요.');
+                return false;
+            }
+            
+            if (!targetSelect.value) {
+                alert('대표 교실을 선택해주세요.');
+                return false;
+            }
+            
+            const classroomNames = Array.from(checkedBoxes).map(cb => {
+                const item = cb.closest('.merge-item');
+                const spanText = item.querySelector('span').textContent;
+                return spanText.split(' (ID:')[0].replace(/^\*+/, ''); // strong 태그로 인한 * 제거
+            });
+            
+            console.log('Classroom names for confirmation:', classroomNames);
+            
+            const message = `다음 교실들을 "${newRoomName}"으로 병합하시겠습니까?\n\n` +
+                          `병합할 교실들:\n${classroomNames.map(name => `• ${name}`).join('\n')}\n\n` +
+                          `⚠️ 주의: 이 작업은 되돌릴 수 없습니다.`;
+            
+            const userConfirmed = confirm(message);
+            console.log('User confirmed merge:', userConfirmed);
+            
+            return userConfirmed;
+        }
+
+        // 삭제 확인
+        function confirmDelete(classroomId, roomName) {
+            if (confirm(`"${roomName}" 교실을 삭제하시겠습니까?\n\n주의: 이 교실을 사용하는 장비나 무선AP가 있으면 삭제할 수 없습니다.`)) {
+                // 스크롤 위치 저장
+                saveScrollPosition();
+                
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/classroom/delete';
+                
+                const classroomIdInput = document.createElement('input');
+                classroomIdInput.type = 'hidden';
+                classroomIdInput.name = 'classroomId';
+                classroomIdInput.value = classroomId;
+                
+                const schoolIdInput = document.createElement('input');
+                schoolIdInput.type = 'hidden';
+                schoolIdInput.name = 'schoolId';
+                schoolIdInput.value = selectedSchoolId;
+                
+                form.appendChild(classroomIdInput);
+                form.appendChild(schoolIdInput);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        // 모달 외부 클릭 시 닫기
+        window.onclick = function(event) {
+            const editModal = document.getElementById('editModal');
+            const mergeModal = document.getElementById('mergeModal');
+            const progressModal = document.getElementById('progressModal');
+            
+            if (event.target === editModal) {
+                closeEditModal();
+            }
+            if (event.target === mergeModal) {
+                closeMergeModal();
+            }
+            // 진행 상황 모달은 외부 클릭으로 닫지 않음 (작업 중 실수 방지)
+        }
+
+        // 전체 그룹 선택/해제
+        function toggleAllGroups(selectAllCheckbox) {
+            const groupCheckboxes = document.querySelectorAll('.group-checkbox');
+            const isChecked = selectAllCheckbox.checked;
+            
+            groupCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+                const group = checkbox.closest('.duplicate-group');
+                if (isChecked) {
+                    group.classList.add('selected');
+                } else {
+                    group.classList.remove('selected');
+                }
+            });
+            
+            updateGroupSelection();
+        }
+
+        // 그룹 선택 상태 업데이트
+        function updateGroupSelection() {
+            const groupCheckboxes = document.querySelectorAll('.group-checkbox');
+            const selectAllCheckbox = document.getElementById('selectAllGroups');
+            const selectedCount = document.querySelectorAll('.group-checkbox:checked').length;
+            const totalCount = groupCheckboxes.length;
+            
+            // 전체 선택 체크박스 상태 업데이트
+            if (selectedCount === 0) {
+                selectAllCheckbox.indeterminate = false;
+                selectAllCheckbox.checked = false;
+            } else if (selectedCount === totalCount) {
+                selectAllCheckbox.indeterminate = false;
+                selectAllCheckbox.checked = true;
+            } else {
+                selectAllCheckbox.indeterminate = true;
+            }
+            
+            // 선택된 그룹 카운트 업데이트
+            document.getElementById('selectedGroupsCount').textContent = `${selectedCount}개 그룹 선택됨`;
+            document.getElementById('bulkMergeCount').textContent = selectedCount;
+            
+            // 모두 병합 버튼 활성화/비활성화
+            const bulkMergeBtn = document.getElementById('bulkMergeBtn');
+            bulkMergeBtn.disabled = selectedCount === 0;
+            
+            // 개별 그룹 스타일 업데이트
+            groupCheckboxes.forEach(checkbox => {
+                const group = checkbox.closest('.duplicate-group');
+                if (checkbox.checked) {
+                    group.classList.add('selected');
+                } else {
+                    group.classList.remove('selected');
+                }
+            });
+        }
+
+        // 모두 병합 실행
+        function performBulkMerge() {
+            const selectedCheckboxes = document.querySelectorAll('.group-checkbox:checked');
+            
+            if (selectedCheckboxes.length === 0) {
+                alert('병합할 그룹을 선택해주세요.');
+                return;
+            }
+            
+            // 선택된 그룹들의 정보 수집
+            const groupsToMerge = [];
+            selectedCheckboxes.forEach(checkbox => {
+                const groupKey = checkbox.getAttribute('data-group-key');
+                const firstRoomName = checkbox.getAttribute('data-first-room-name');
+                const duplicateGroup = checkbox.closest('.duplicate-group');
+                const duplicateItems = duplicateGroup.querySelectorAll('.duplicate-item');
+                
+                const classrooms = [];
+                duplicateItems.forEach(item => {
+                    const nameEl = item.querySelector('.classroom-name');
+                    const idEl = item.querySelector('.classroom-id');
+                    
+                    if (nameEl && idEl) {
+                        const classroomId = parseInt(idEl.textContent.trim());
+                        const roomName = nameEl.textContent.trim();
+                        
+                        if (!isNaN(classroomId) && roomName) {
+                            classrooms.push({ classroomId, roomName });
+                        }
+                    }
+                });
+                
+                if (classrooms.length >= 2) {
+                    groupsToMerge.push({
+                        groupKey: groupKey,
+                        firstRoomName: firstRoomName,
+                        classrooms: classrooms
+                    });
+                }
+            });
+            
+            if (groupsToMerge.length === 0) {
+                alert('유효한 중복 교실 그룹이 없습니다.');
+                return;
+            }
+            
+            // 병합 정보를 사용자에게 표시
+            let confirmMessage = `선택된 ${groupsToMerge.length}개 그룹을 모두 병합하시겠습니까?\n\n`;
+            confirmMessage += '각 그룹은 다음과 같이 병합됩니다:\n\n';
+            
+            groupsToMerge.forEach((group, index) => {
+                confirmMessage += `${index + 1}. "${group.groupKey}" 그룹 → "${group.firstRoomName}"으로 병합\n`;
+                confirmMessage += `   병합 대상: ${group.classrooms.map(c => c.roomName).join(', ')}\n\n`;
+            });
+            
+            confirmMessage += '⚠️ 주의: 각 그룹의 첫 번째 교실 이름으로 통합되며, 장비들도 합쳐집니다. 이 작업은 되돌릴 수 없습니다.';
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // 스크롤 위치 저장
+            saveScrollPosition();
+            
+            // 진행 상황 모달 표시
+            showProgressModal(
+                '일괄 병합 진행 중...',
+                `총 ${groupsToMerge.length}개 그룹을 순차적으로 병합하고 있습니다.`,
+                true // 진행률 바 표시
+            );
+            
+            // 각 그룹을 순차적으로 병합
+            processBulkMerge(groupsToMerge, 0);
+        }
+
+        // 일괄 병합 처리 (순차적 실행)
+        function processBulkMerge(groupsToMerge, currentIndex) {
+            if (currentIndex >= groupsToMerge.length) {
+                // 모든 병합 완료
+                updateProgress(100, '모든 그룹 병합이 완료되었습니다!');
+                
+                setTimeout(() => {
+                    hideProgressModal();
+                    alert(`총 ${groupsToMerge.length}개 그룹의 병합이 완료되었습니다! 🎉`);
+                    // 스크롤 위치 저장 후 페이지 새로고침
+                    saveScrollPosition();
+                    window.location.reload();
+                }, 1500);
+                return;
+            }
+            
+            const currentGroup = groupsToMerge[currentIndex];
+            const firstClassroom = currentGroup.classrooms[0];
+            const progressPercent = Math.round((currentIndex / groupsToMerge.length) * 100);
+            
+            // 진행률 업데이트
+            updateProgress(
+                progressPercent,
+                `${currentIndex + 1}/${groupsToMerge.length}: "${currentGroup.groupKey}" 그룹 병합 중...`
+            );
+            
+            // 폼 데이터 생성
+            const formData = new FormData();
+            formData.append('schoolId', selectedSchoolId);
+            formData.append('targetId', firstClassroom.classroomId);
+            formData.append('newRoomName', currentGroup.firstRoomName);
+            
+            // 병합할 교실 ID들 추가
+            currentGroup.classrooms.forEach(classroom => {
+                formData.append('sourceIds', classroom.classroomId);
+            });
+            
+            console.log(`Processing group ${currentIndex + 1}/${groupsToMerge.length}: ${currentGroup.groupKey}`);
+            
+            // 서버에 병합 요청
+            fetch('/classroom/merge', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log(`Group ${currentIndex + 1} merged successfully`);
+                    // 다음 그룹 처리
+                    setTimeout(() => {
+                        processBulkMerge(groupsToMerge, currentIndex + 1);
+                    }, 500); // 500ms 딜레이로 서버 부하 방지
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            })
+            .catch(error => {
+                console.error('Bulk merge error:', error);
+                hideProgressModal();
+                alert(`${currentIndex + 1}번째 그룹 "${currentGroup.groupKey}" 병합 중 오류가 발생했습니다:\n${error.message}\n\n진행을 중단합니다.`);
+            });
+        }
+        
+        // 모든 중복 그룹 삭제 함수
+        function removeAllGroups() {
+            console.log('=== REMOVE ALL GROUPS ===');
+            
+            const allGroups = document.querySelectorAll('.duplicate-group');
+            
+            if (allGroups.length === 0) {
+                alert('삭제할 중복 그룹이 없습니다.');
+                return;
+            }
+            
+            // 확인 메시지 표시
+            const confirmMessage = `현재 표시된 모든 중복교실 그룹(${allGroups.length}개)을 목록에서 삭제하시겠습니까?\n\n` +
+                                 `⚠️ 주의: 이 작업은 중복교실 관리 목록에서만 그룹들을 제거하며,\n` +
+                                 `실제 교실 데이터는 삭제되지 않습니다.\n\n` +
+                                 `이 설정은 현재 세션 동안 유지됩니다.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // 진행 상황 모달 표시
+            showProgressModal('모든 그룹 삭제 중...', `${allGroups.length}개의 중복 그룹을 목록에서 제거하고 있습니다.`, true);
+            
+            // 서버에 모든 그룹 제외 요청
+            const formData = new FormData();
+            formData.append('schoolId', selectedSchoolId);
+            
+            fetch('/classroom/exclude-all-duplicate-groups', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Server response:', data);
+                
+                if (data.success) {
+                    // 순차적으로 그룹 삭제 (애니메이션 효과)
+                    let deletedCount = 0;
+                    const totalGroups = allGroups.length;
+                    
+                    allGroups.forEach((group, index) => {
+                        setTimeout(() => {
+                            // 진행률 업데이트
+                            const progressPercent = Math.round(((index + 1) / totalGroups) * 100);
+                            updateProgress(progressPercent, `${index + 1}/${totalGroups} 그룹 삭제 중...`);
+                            
+                            // 삭제 애니메이션
+                            group.style.transition = 'all 0.3s ease';
+                            group.style.opacity = '0';
+                            group.style.transform = 'translateX(-100%)';
+                            
+                            setTimeout(() => {
+                                group.remove();
+                                deletedCount++;
+                                
+                                // 모든 그룹이 삭제되었는지 확인
+                                if (deletedCount === totalGroups) {
+                                    // 완료 처리
+                                    updateDuplicateGroupsCount();
+                                    hideProgressModal();
+                                    
+                                    alert(`모든 중복 그룹(${totalGroups}개)이 목록에서 제거되었습니다.\n\n현재 세션에서 제외된 그룹: ${data.excludedGroupsCount}개`);
+                                    console.log('All groups removed successfully');
+                                }
+                            }, 300);
+                            
+                        }, index * 100); // 100ms 간격으로 순차 삭제
+                    });
+                } else {
+                    hideProgressModal();
+                    alert('모든 그룹 제거 중 오류가 발생했습니다: ' + (data.message || '알 수 없는 오류'));
+                }
+            })
+            .catch(error => {
+                console.error('Error excluding all groups:', error);
+                hideProgressModal();
+                
+                let errorMessage = '모든 그룹 제거 중 오류가 발생했습니다.';
+                if (error.message.includes('HTTP error')) {
+                    errorMessage += ' 서버 연결에 문제가 있습니다.';
+                }
+                
+                alert(errorMessage);
+            });
+        }
+
+        function selectForDuplicateManagement() {
+            console.log('=== SELECT FOR DUPLICATE MANAGEMENT ===');
+            
+            if (selectedClassrooms.length < 2) {
+                alert('중복교실 관리에 보내려면 최소 2개 이상의 교실을 선택해야 합니다.');
+                return;
+            }
+            
+            console.log('Selected classrooms for duplicate management:', selectedClassrooms);
+            
+            // 선택된 교실들의 이름을 확인 메시지로 표시
+            const classroomNames = selectedClassrooms.map(c => c.roomName).join(', ');
+            const confirmMessage = `선택된 ${selectedClassrooms.length}개의 교실을 중복교실 관리 섹션으로 보내시겠습니까?\n\n선택된 교실들:\n${classroomNames}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // 진행 상황 모달 표시
+            showProgressModal('중복교실 관리로 등록 중...', '선택된 교실들을 중복교실 관리 섹션에 등록하고 있습니다.');
+            
+            // 서버에 선택된 교실들을 임시 중복 그룹으로 추가 요청
+            const formData = new FormData();
+            formData.append('schoolId', selectedSchoolId);
+            
+            // 선택된 교실 IDs 추가
+            selectedClassrooms.forEach(classroom => {
+                formData.append('classroomIds', classroom.classroomId);
+            });
+            
+            fetch('/classroom/add-selected-as-duplicate-group', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Server response:', data);
+                
+                if (data.success) {
+                    hideProgressModal();
+                    
+                    // 성공 메시지 표시
+                    alert(`${data.classroomCount}개의 교실이 중복교실 관리 섹션에 등록되었습니다!\n\n페이지가 새로고침되어 등록된 그룹이 표시됩니다.`);
+                    
+                    // 선택 해제
+                    clearClassroomSelection();
+                    
+                    // 스크롤 위치 저장 후 페이지 새로고침
+                    saveScrollPosition();
+                    window.location.reload();
+                    
+                } else {
+                    hideProgressModal();
+                    alert('교실 등록 중 오류가 발생했습니다: ' + (data.message || '알 수 없는 오류'));
+                }
+            })
+            .catch(error => {
+                console.error('Error adding selected classrooms:', error);
+                hideProgressModal();
+                
+                let errorMessage = '선택된 교실들을 중복교실 관리에 등록하는 중 오류가 발생했습니다.';
+                if (error.message.includes('HTTP error')) {
+                    errorMessage += ' 서버 연결에 문제가 있습니다.';
+                }
+                
+                alert(errorMessage);
+            });
+        }
+        
+        // 중복 그룹 수 업데이트 함수
+        function updateDuplicateGroupsCount() {
+            const remainingGroups = document.querySelectorAll('.duplicate-group');
+            const badge = document.querySelector('.section-header-modern .badge');
+            
+            if (badge) {
+                badge.textContent = `${remainingGroups.length}개 그룹`;
+            }
+            
+            // 그룹이 모두 제거된 경우 empty-state 표시
+            if (remainingGroups.length === 0) {
+                const duplicateSection = document.querySelector('.duplicate-section');
+                const emptyState = document.querySelector('.empty-state');
+                
+                if (duplicateSection && emptyState) {
+                    duplicateSection.style.display = 'none';
+                    emptyState.style.display = 'block';
+                } else if (duplicateSection) {
+                    // empty-state가 없는 경우 동적으로 생성
+                    duplicateSection.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-check-circle"></i>
+                            <p>중복된 교실이 없습니다! 🎉</p>
+                        </div>
+                    `;
+                }
+            }
+            
+            console.log(`Updated groups count: ${remainingGroups.length}`);
+        }
+
+        // 교실 선택 해제 함수
+        function clearClassroomSelection() {
+            console.log('=== CLEARING CLASSROOM SELECTION ===');
+            
+            // 모든 체크박스 해제
+            const checkboxes = document.querySelectorAll('.classroom-checkbox');
+            checkboxes.forEach(function(checkbox) {
+                checkbox.checked = false;
+                const card = checkbox.closest('.classroom-card');
+                card.classList.remove('selected');
+            });
+            
+            // 전체 선택 체크박스도 해제
+            const selectAllCheckbox = document.getElementById('selectAllClassrooms');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+            
+            // 선택된 교실 배열 초기화
+            selectedClassrooms = [];
+            
+            // UI 업데이트
+            updateClassroomSelection();
+            
+            console.log('All classroom selections cleared');
+        }
+
+        // 교실 순서 업데이트 함수
+        async function updateClassroomOrder(inputElement) {
+            const classroomId = inputElement.getAttribute('data-classroom-id');
+            const schoolId = inputElement.getAttribute('data-school-id');
+            const newOrder = parseInt(inputElement.value);
+            
+            if (!classroomId || !schoolId) {
+                alert('교실 정보를 찾을 수 없습니다.');
+                inputElement.value = inputElement.getAttribute('data-original-order') || '';
+                return;
+            }
+            
+            if (isNaN(newOrder) || newOrder < 1) {
+                alert('순서는 1 이상의 숫자여야 합니다.');
+                inputElement.value = inputElement.getAttribute('data-original-order') || '';
+                return;
+            }
+            
+            // 원래 값 저장 (실패 시 복원용)
+            if (!inputElement.getAttribute('data-original-order')) {
+                inputElement.setAttribute('data-original-order', inputElement.value || '');
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('classroomId', classroomId);
+                formData.append('order', newOrder);
+                formData.append('schoolId', schoolId);
+                
+                const response = await fetch('/classroom/api/update-order', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 성공 시 원래 값 업데이트
+                    inputElement.setAttribute('data-original-order', newOrder);
+                    
+                    // 페이지 새로고침하여 순서대로 정렬된 교실 목록 표시
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 300);
+                } else {
+                    alert(result.message || '순서 업데이트에 실패했습니다.');
+                    inputElement.value = inputElement.getAttribute('data-original-order') || '';
+                }
+            } catch (error) {
+                console.error('순서 업데이트 중 오류:', error);
+                alert('순서 업데이트 중 오류가 발생했습니다.');
+                inputElement.value = inputElement.getAttribute('data-original-order') || '';
+            }
+        }
+        
+        // 중복 그룹 삭제 함수
+        function removeGroup(button) {
+            console.log('=== REMOVE GROUP ===');
+            
+            const groupKey = button.getAttribute('data-group-key');
+            const firstRoomName = button.getAttribute('data-first-room-name');
+            
+            console.log('Group key to remove:', groupKey);
+            console.log('First room name:', firstRoomName);
+            
+            // 확인 메시지 표시
+            const confirmMessage = `"${firstRoomName}" 그룹을 중복교실 목록에서 삭제하시겠습니까?\n\n` +
+                                 `⚠️ 주의: 이 작업은 중복교실 관리 목록에서만 해당 그룹을 제거하며,\n` +
+                                 `실제 교실 데이터는 삭제되지 않습니다.\n\n` +
+                                 `이 설정은 현재 세션 동안 유지됩니다.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // 진행 상황 모달 표시
+            showProgressModal('그룹 삭제 중...', '선택된 중복 그룹을 목록에서 제거하고 있습니다.');
+            
+            // 서버에 그룹 제외 요청
+            const formData = new FormData();
+            formData.append('schoolId', selectedSchoolId);
+            formData.append('groupKey', groupKey);
+            
+            fetch('/classroom/exclude-duplicate-group', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Server response:', data);
+                
+                if (data.success) {
+                    // 해당 그룹 요소 찾기 및 제거
+                    const duplicateGroup = button.closest('.duplicate-group');
+                    if (duplicateGroup) {
+                        // 부드러운 삭제 애니메이션
+                        duplicateGroup.style.transition = 'all 0.5s ease';
+                        duplicateGroup.style.opacity = '0';
+                        duplicateGroup.style.transform = 'translateX(-100%)';
+                        
+                        setTimeout(() => {
+                            duplicateGroup.remove();
+                            
+                            // 남은 그룹 수 업데이트
+                            updateDuplicateGroupsCount();
+                            
+                            // 모달 닫기
+                            hideProgressModal();
+                            
+                            // 성공 메시지
+                            alert(`"${firstRoomName}" 그룹이 중복교실 목록에서 제거되었습니다.\n\n현재 세션에서 제외된 그룹: ${data.excludedGroupsCount}개`);
+                            
+                            console.log('Group removed successfully');
+                        }, 500);
+                    } else {
+                        hideProgressModal();
+                        alert('그룹을 찾을 수 없습니다.');
+                    }
+                } else {
+                    hideProgressModal();
+                    alert('그룹 제거 중 오류가 발생했습니다: ' + (data.message || '알 수 없는 오류'));
+                }
+            })
+            .catch(error => {
+                console.error('Error excluding group:', error);
+                hideProgressModal();
+                
+                let errorMessage = '그룹 제거 중 오류가 발생했습니다.';
+                if (error.message.includes('HTTP error')) {
+                    errorMessage += ' 서버 연결에 문제가 있습니다.';
+                }
+                
+                alert(errorMessage);
+            });
+        }
+        
+        /*]]>*/
+    </script>
+</body>
+</html> 

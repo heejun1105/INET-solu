@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>무선 AP 목록</title>
+    <link rel="stylesheet" href="/device.css" />
+    <link rel="stylesheet" href="/main.css" />
+    <link rel="stylesheet" href="/navbar.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .alert-dismissible {
+            position: relative;
+        }
+        
+        .btn-close {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 2;
+            padding: 15px;
+            background: transparent;
+            border: 0;
+            font-size: 20px;
+            cursor: pointer;
+            color: #155724;
+        }
+        
+        .btn-close:hover {
+            color: #0f5132;
+        }
+        
+        .alert i {
+            margin-right: 8px;
+        }
+        
+        /* 검색 기능 스타일 */
+        .search-container {
+            display: flex;
+            justify-content: center;
+            margin: 30px 0;
+            padding: 0 20px;
+        }
+        
+        .search-form {
+            width: 100%;
+            max-width: 600px;
+        }
+        
+        .search-input-group {
+            display: flex;
+            align-items: center;
+            background: white;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .search-input-group:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: none;
+            outline: none;
+            font-size: 16px;
+            background: transparent;
+        }
+        
+        .search-input::placeholder {
+            color: #999;
+            font-style: italic;
+        }
+        
+        .search-btn {
+            padding: 15px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            font-size: 16px;
+        }
+        
+        .search-btn:hover {
+            background-color: #0056b3;
+        }
+        
+        /* 필터 컨테이너 */
+        .filter-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-form {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        
+        .filter-select {
+            width: 15.3% !important; /* 기존 18%에서 15% 감소 (18% * 0.85) */
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            transition: all 0.2s ease;
+        }
+        
+        .filter-select:focus {
+            outline: none;
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        }
+        
+        /* 액션 버튼 컨테이너 */
+        .action-buttons-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            white-space: nowrap;
+        }
+        
+        .btn-primary {
+            background-color: #1e3a8a;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #1e40af;
+            transform: translateY(-1px);
+        }
+        
+        .btn-success {
+            background-color: #10b981;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #059669;
+            transform: translateY(-1px);
+        }
+        
+        .btn-info {
+            background-color: #06b6d4;
+            color: white;
+        }
+        
+        .btn-info:hover {
+            background-color: #0891b2;
+            transform: translateY(-1px);
+        }
+        
+        .btn-warning {
+            background-color: #f59e0b;
+            color: white;
+            padding: 6px 12px;
+            font-size: 0.875rem;
+        }
+        
+        .btn-warning:hover {
+            background-color: #d97706;
+        }
+        
+        .btn-danger {
+            background-color: #ef4444;
+            color: white;
+            padding: 6px 12px;
+            font-size: 0.875rem;
+        }
+        
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        /* 테이블 스타일 */
+        .wireless-ap-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .wireless-ap-table th {
+            background: #f8fafc;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+        
+        .wireless-ap-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+            font-size: 0.9rem;
+        }
+        
+        .wireless-ap-table tbody tr:hover {
+            background-color: #f8fafc;
+        }
+        
+        .wireless-ap-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* 교실 헤더 스타일 */
+        .classroom-header {
+            background: #e0f2fe !important;
+            border-left: 4px solid #0284c7;
+        }
+        
+        .classroom-header td {
+            padding: 15px 12px;
+            font-weight: 600;
+            color: #0c4a6e;
+            border-bottom: 2px solid #bae6fd;
+        }
+        
+        .classroom-header i {
+            margin-right: 8px;
+            color: #0284c7;
+        }
+        
+        /* 모바일 카드 뷰 */
+        .mobile-card-container {
+            display: none;
+        }
+        
+        .wireless-ap-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-header {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1e3a8a;
+            grid-column: 1 / 2;
+        }
+        
+        .card-school {
+            font-size: 0.9rem;
+            color: #6b7280;
+            background: #f3f4f6;
+            padding: 4px 8px;
+            border-radius: 6px;
+            justify-self: end;
+            grid-column: 3 / 4;
+        }
+        
+        .card-content {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(120px, 1fr));
+            gap: 10px 16px;
+            margin-bottom: 20px;
+        }
+        
+        .card-field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .card-field.full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .field-label {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        
+        .field-value {
+            font-size: 0.9rem;
+            color: #374151;
+            font-weight: 500;
+        }
+        
+        .card-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .card-actions-tablet {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-wide {
+            min-width: 120px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* 교실 헤더 모바일 */
+        .classroom-header-mobile {
+            background: #e0f2fe;
+                padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #0284c7;
+        }
+        
+        .classroom-header-mobile h3 {
+            margin: 0;
+            color: #0c4a6e;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .classroom-header-mobile i {
+            margin-right: 8px;
+            color: #0284c7;
+        }
+        
+        /* 학교 선택 안내 메시지 스타일 */
+        .school-selection-message {
+            display: flex;
+                justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            margin: 30px 0;
+        }
+        
+        .message-container {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .message-container i {
+            font-size: 4rem;
+            color: #6b7280;
+            margin-bottom: 20px;
+        }
+        
+        .message-container h3 {
+            font-size: 1.5rem;
+            color: #374151;
+                margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .message-container p {
+            font-size: 1rem;
+            color: #6b7280;
+                margin: 0;
+        }
+        
+        /* 반응형 디자인 */
+        @media (max-width: 1200px) {
+            .wireless-ap-table {
+                display: none;
+            }
+
+            .mobile-card-container {
+                display: block;
+            }
+
+            .filter-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .filter-form {
+                gap: 12px;
+            }
+
+            .action-buttons-container {
+                justify-content: center;
+                width: 100%;
+            }
+
+            .card-content {
+                grid-template-columns: repeat(6, minmax(90px, 1fr));
+                gap: 6px 10px;
+            }
+
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .card-actions-tablet {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+
+            .card-actions-tablet .btn-wide {
+                width: 100%;
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 850px) {
+            .wireless-ap-table {
+                display: none;
+            }
+            
+            .mobile-card-container {
+                display: block;
+            }
+            
+            .filter-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .filter-form {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons-container {
+                justify-content: center;
+                width: 100%;
+            }
+            
+            .card-content {
+                grid-template-columns: repeat(5, minmax(110px, 1fr));
+                gap: 8px 12px;
+            }
+
+            .card-actions-tablet {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+
+            .card-actions-tablet .btn-wide {
+                width: 100%;
+                min-width: 0;
+            }
+            
+            .school-selection-message {
+                min-height: 300px;
+                margin: 20px 0;
+            }
+            
+            .message-container {
+                padding: 30px 20px;
+            }
+            
+            .message-container i {
+                font-size: 3rem;
+            }
+            
+            .message-container h3 {
+                font-size: 1.3rem;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .mobile-card-container {
+                display: block;
+            }
+
+            .card-content {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+                gap: 12px 14px;
+            }
+
+            .card-actions-tablet {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .card-actions-tablet .btn-wide {
+                width: 100%;
+                min-width: 0;
+            }
+        }
+        
+        /* 페이징 스타일 */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            list-style: none;
+            padding: 0;
+            margin: 30px 0;
+        }
+        
+        .pagination li {
+            margin: 0 5px;
+        }
+        
+        .pagination a {
+            display: block;
+            padding: 10px 15px;
+            text-decoration: none;
+            color: #1e3a8a;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .pagination a:hover {
+            background-color: #1e3a8a;
+            color: white;
+            border-color: #1e3a8a;
+        }
+        
+        .pagination .active a {
+            background-color: #1e3a8a;
+            color: white;
+            border-color: #1e3a8a;
+        }
+        
+        .pagination .disabled a {
+            color: #9ca3af;
+            cursor: not-allowed;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+    <div th:replace="~{fragments/navbar :: navbar}"></div>
+    
+    <div class="container">
+        <div class="wireless-ap-container">
+            <div class="title">
+                <div class="subject">무선 AP 목록</div>
+                <div class="subtitle">등록된 무선 액세스 포인트를 확인하고 관리할 수 있습니다.</div>
+            </div>
+            
+            <!-- 성공 메시지 -->
+            <div th:if="${success}" class="alert alert-success alert-dismissible">
+                <i class="fas fa-check-circle"></i>
+                <span th:text="${success}"></span>
+                <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- 검색 기능 -->
+            <div class="search-container">
+                <form th:action="@{/wireless-ap/list}" method="get" class="search-form">
+                    <div class="search-input-group">
+                        <input type="text" name="searchKeyword" th:value="${searchKeyword}" 
+                               class="search-input" placeholder="무선 AP 검색 (위치, 제조사, 모델, MAC 주소 등)">
+                        <button type="submit" class="search-btn">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- 필터 -->
+            <div class="filter-container">
+                <form th:action="@{/wireless-ap/list}" method="get" class="filter-form">
+                    <input type="hidden" name="searchKeyword" th:value="${searchKeyword}">
+                    
+                    <select name="schoolId" id="schoolSelect" onchange="updateClassrooms()" class="filter-select">
+                        <option value="">전체 학교</option>
+                        <option th:each="school : ${schools}" 
+                                th:value="${school.schoolId}" 
+                                th:text="${school.schoolName}"
+                                    th:selected="${selectedSchoolId != null and selectedSchoolId == school.schoolId}">
+                        </option>
+                    </select>
+                    
+                    <select name="classroomId" id="classroomSelect" class="filter-select">
+                        <option value="">전체 교실</option>
+                    </select>
+                    
+
+                </form>
+                
+                <!-- 액션 버튼 -->
+                <div class="action-buttons-container">
+                    <a th:href="@{/wireless-ap/register}" class="btn btn-primary">
+                        <i class="fas fa-plus" style="color: white;"></i> <span style="color: white;">무선 AP 등록</span>
+                    </a>
+                    <a th:href="@{/wireless-ap/excel(schoolId=${selectedSchoolId}, classroomId=${selectedClassroomId})}" class="btn btn-success" id="excelDownloadBtn" onclick="downloadExcel(event)">
+                        <i class="fas fa-file-excel" style="color: white;"></i> <span style="color: white;">엑셀 다운로드</span>
+                    </a>
+                    <a th:href="@{/wireless-ap/history/list(schoolId=${selectedSchoolId})}" class="btn btn-info">
+                        <i class="fas fa-history"></i> <span>수정내역</span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- 학교 선택 안내 메시지 -->
+            <div th:if="${selectedSchoolId == null or selectedSchoolId == ''}" class="school-selection-message">
+                <div class="message-container">
+                    <i class="fas fa-school"></i>
+                    <h3>학교를 선택해주세요</h3>
+                    <p>무선 AP 목록을 보려면 위에서 학교를 선택해주세요.</p>
+                </div>
+            </div>
+            
+            <!-- 데스크톱 테이블 뷰 -->
+            <table th:if="${selectedSchoolId != null and selectedSchoolId != ''}" class="wireless-ap-table">
+                <thead>
+                    <tr>
+                        <th>학교</th>
+                        <th>현위치</th>
+                        <th>교실구분</th>
+                        <th>신규라벨번호</th>
+                        <th>장비번호</th>
+                        <th>도입년도</th>
+                        <th>제조사</th>
+                        <th>모델</th>
+                        <th>MAC주소</th>
+                        <th>기존위치</th>
+                        <th>기존라벨번호</th>
+                        <th>속도</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="ap : ${wirelessAps}">
+                            <td data-label="학교" th:text="${ap.school != null ? ap.school.schoolName : '미지정'}"></td>
+                        <td data-label="현위치" th:text="${ap.location != null ? ap.location.roomName : ''}"></td>
+                        <td data-label="교실구분" th:text="${ap.classroomType != null ? ap.classroomType : ''}"></td>
+                        <td data-label="신규라벨번호" th:text="${ap.newLabelNumber != null ? ap.newLabelNumber : ''}"></td>
+                        <td data-label="장비번호" th:text="${ap.deviceNumber != null ? ap.deviceNumber : ''}"></td>
+                        <td data-label="도입년도" th:text="${ap.APYear != null ? ap.APYear.year : ''}"></td>
+                            <td data-label="제조사" th:text="${ap.manufacturer != null ? ap.manufacturer : ''}"></td>
+                        <td data-label="모델" th:text="${ap.model != null ? ap.model : ''}"></td>
+                        <td data-label="MAC주소" class="mac-address" th:text="${ap.macAddress != null ? ap.macAddress : ''}"></td>
+                        <td data-label="기존위치" th:text="${ap.prevLocation != null ? ap.prevLocation : ''}"></td>
+                        <td data-label="기존라벨번호" th:text="${ap.prevLabelNumber != null ? ap.prevLabelNumber : ''}"></td>
+                        <td data-label="속도" th:text="${ap.speed != null ? ap.speed : ''}"></td>
+                            <td data-label="관리">
+                            <div class="action-buttons">
+                                <a th:href="@{/wireless-ap/modify/{id}(id=${ap.APId})}" class="btn btn-warning">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                <form th:action="@{/wireless-ap/remove}" method="post" style="display: inline;">
+                                        <input type="hidden" name="ap_id" th:value="${ap.APId}">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('정말 삭제하시겠습니까?')">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                </tbody>
+            </table>
+            
+            <!-- 모바일 카드 뷰 -->
+            <div th:if="${selectedSchoolId != null and selectedSchoolId != ''}" class="mobile-card-container">
+                <th:block th:each="ap, iterStat : ${wirelessAps}">
+                    <!-- 교실 헤더 표시 (새로운 교실일 때) -->
+                    <div th:if="${iterStat.index == 0 or ap.location?.roomName != wirelessAps[iterStat.index - 1].location?.roomName}" 
+                         class="classroom-header-mobile">
+                        <h3>
+                            <i class="fas fa-wifi"></i> 
+                            <span th:text="${ap.location != null and ap.location.roomName != null ? ap.location.roomName : '미지정 교실'}"></span>
+                        </h3>
+                    </div>
+                    
+                    <!-- 무선 AP 카드 -->
+                    <div class="wireless-ap-card">
+                        <div class="card-header">
+                            <div class="card-title">무선 AP</div>
+                            <div class="card-school" th:text="${ap.school != null ? ap.school.schoolName : '미지정'}">학교</div>
+                        </div>
+                        
+                        <div class="card-content">
+                        <div class="card-field" th:if="${ap.location != null and ap.location.roomName != null}">
+                                <div class="field-label">현위치</div>
+                                <div class="field-value" th:text="${ap.location.roomName}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.classroomType != null and !#strings.isEmpty(ap.classroomType)}">
+                                <div class="field-label">교실구분</div>
+                                <div class="field-value" th:text="${ap.classroomType}"></div>
+                            </div>
+                            
+                <div class="card-field" th:if="${ap.newLabelNumber != null and !#strings.isEmpty(ap.newLabelNumber)}">
+                                <div class="field-label">신규라벨번호</div>
+                                <div class="field-value" th:text="${ap.newLabelNumber}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.deviceNumber != null and !#strings.isEmpty(ap.deviceNumber)}">
+                                <div class="field-label">장비번호</div>
+                                <div class="field-value" th:text="${ap.deviceNumber}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.APYear != null}">
+                                <div class="field-label">도입년도</div>
+                                <div class="field-value" th:text="${ap.APYear.year + '년'}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.manufacturer != null and !#strings.isEmpty(ap.manufacturer)}">
+                                <div class="field-label">제조사</div>
+                                <div class="field-value" th:text="${ap.manufacturer}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.model != null and !#strings.isEmpty(ap.model)}">
+                                <div class="field-label">모델</div>
+                                <div class="field-value" th:text="${ap.model}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.macAddress != null and !#strings.isEmpty(ap.macAddress)}">
+                                <div class="field-label">MAC주소</div>
+                                <div class="field-value" th:text="${ap.macAddress}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.prevLocation != null and !#strings.isEmpty(ap.prevLocation)}">
+                                <div class="field-label">기존위치</div>
+                                <div class="field-value" th:text="${ap.prevLocation}"></div>
+                            </div>
+                            
+                <div class="card-field" th:if="${ap.prevLabelNumber != null and !#strings.isEmpty(ap.prevLabelNumber)}">
+                                <div class="field-label">기존라벨번호</div>
+                                <div class="field-value" th:text="${ap.prevLabelNumber}"></div>
+                            </div>
+                            
+                        <div class="card-field" th:if="${ap.speed != null and !#strings.isEmpty(ap.speed)}">
+                                <div class="field-label">속도</div>
+                                <div class="field-value" th:text="${ap.speed}"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="card-actions card-actions-tablet">
+                            <a th:href="@{/wireless-ap/modify/{id}(id=${ap.APId})}" class="btn btn-warning btn-wide action-edit">
+                                <i class="fas fa-edit"></i> 수정
+                            </a>
+                            <form th:action="@{/wireless-ap/remove}" method="post" style="display: inline;">
+                                <input type="hidden" name="ap_id" th:value="${ap.APId}">
+                                <button type="submit" class="btn btn-danger btn-wide action-delete" onclick="return confirm('정말 삭제하시겠습니까?')">
+                                    <i class="fas fa-trash-alt"></i> 삭제
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </th:block>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 푸터 포함 -->
+    <div th:replace="~{fragments/footer :: footer}"></div>
+    
+    <script>
+        function updateClassrooms(schoolId) {
+            const classroomSelect = document.getElementById('classroomSelect');
+            const selectedClassroomId = classroomSelect.value; // 현재 선택된 교실 ID 저장
+            classroomSelect.innerHTML = '<option value="">전체 교실</option>';
+            
+            if (schoolId) {
+                // 선택된 학교의 교실들만 가져오기
+                fetch(`/wireless-ap/api/classrooms/${schoolId}`)
+                    .then(response => response.json())
+                    .then(classrooms => {
+                        classrooms.forEach(classroom => {
+                            const option = document.createElement('option');
+                            option.value = classroom.classroomId;
+                            option.textContent = classroom.roomName;
+                            if (classroom.classroomId == selectedClassroomId) {
+                                option.selected = true;
+                            }
+                            classroomSelect.appendChild(option);
+                        });
+                    })
+                    .catch(error => console.error('Error:', error));
+            } else {
+                // 전체 학교일 때는 모든 교실 표시
+                fetch('/wireless-ap/api/classrooms')
+                    .then(response => response.json())
+                    .then(classrooms => {
+                        classrooms.forEach(classroom => {
+                            const option = document.createElement('option');
+                            option.value = classroom.classroomId;
+                            option.textContent = classroom.roomName;
+                            if (classroom.classroomId == selectedClassroomId) {
+                                option.selected = true;
+                            }
+                            classroomSelect.appendChild(option);
+                        });
+                    })
+                    .catch(error => console.error('Error:', error));
+            }
+        }
+
+        // 학교 선택 이벤트 - 자동 제출
+        document.getElementById('schoolSelect').addEventListener('change', function() {
+            updateClassrooms(this.value);
+            // 학교 변경 시 자동으로 폼 제출
+            setTimeout(() => {
+                this.form.submit();
+            }, 100); // 교실 목록 업데이트 후 제출
+        });
+
+        // 교실 선택 이벤트 - 자동 제출
+        document.getElementById('classroomSelect').addEventListener('change', function() {
+            // 교실 선택 시 즉시 폼 제출
+            this.form.submit();
+        });
+
+
+
+        // 엑셀 다운로드 진행 표시
+        function downloadExcel(event) {
+            if (event) {
+                event.preventDefault();
+            }
+            
+            const excelBtn = document.getElementById('excelDownloadBtn');
+            const originalHtml = excelBtn.innerHTML;
+            excelBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: white;"></i> <span style="color: white;">엑셀 다운로드 중...</span>';
+            excelBtn.style.pointerEvents = 'none';
+            
+            if (excelBtn && excelBtn.href) {
+                window.location.href = excelBtn.href;
+                // 다운로드 시작 후 버튼 복원 (약간의 지연)
+                setTimeout(() => {
+                    excelBtn.innerHTML = originalHtml;
+                    excelBtn.style.pointerEvents = '';
+                }, 2000);
+            }
+        }
+        
+        // 페이지 로드 시 초기 교실 목록 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            const schoolSelect = document.getElementById('schoolSelect');
+            updateClassrooms(schoolSelect.value);
+            
+            // 성공 메시지 자동 숨김 (5초 후)
+            const successAlert = document.querySelector('.alert-success');
+            if (successAlert) {
+                setTimeout(() => {
+                    successAlert.style.display = 'none';
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html> 

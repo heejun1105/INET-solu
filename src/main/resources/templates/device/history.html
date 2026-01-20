@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>장비 수정내역</title>
+    <link rel="stylesheet" href="/device.css" />
+    <link rel="stylesheet" href="/main.css" />
+    <link rel="stylesheet" href="/navbar.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .history-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .history-title {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .history-title h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .history-title p {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .filter-container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .filter-form {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-form select,
+        .filter-form input,
+        .filter-form .btn {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .filter-form button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .filter-form button:hover {
+            background: #0056b3;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        /* 검색 키워드 강조 표시 스타일 */
+        .search-highlight {
+            background-color: transparent;
+            color: #d32f2f;
+            font-weight: bold;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.8);
+        }
+        
+        .search-highlight:hover {
+            color: #b71c1c;
+            text-shadow: 0 0 2px rgba(255, 255, 255, 0.9);
+            transition: all 0.2s ease;
+        }
+        
+
+        
+        .btn:hover {
+            opacity: 0.8;
+        }
+        
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .history-table th {
+            background: #343a40;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .history-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .history-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .history-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .history-table tr:nth-child(even):hover {
+            background: #e9ecef;
+        }
+        
+        .field-change {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .before-value {
+            color: #ff9800;
+            font-weight: 500;
+        }
+        
+        .after-value {
+            color: #28a745;
+            font-weight: 500;
+        }
+        
+        .arrow {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        .pagination {
+            text-align: center;
+            margin: 2rem 0;
+        }
+        
+        .pagination ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .pagination li {
+            margin: 0;
+        }
+        
+        .pagination a {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            color: #007bff;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            min-width: 2.5rem;
+            text-align: center;
+        }
+        
+        .pagination a:hover {
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .pagination .active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
+        .pagination .disabled a {
+            color: #6c757d;
+            border-color: #6c757d;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        
+        .pagination .disabled a:hover {
+            background-color: transparent;
+            color: #6c757d;
+        }
+        
+        .pagination-container {
+            margin: 2rem 0;
+            text-align: center;
+        }
+        
+        .message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.2em;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .device-info {
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .modified-by {
+            font-weight: 500;
+            color: #007bff;
+        }
+        
+        .uid-info {
+            font-weight: 500;
+            color: #495057;
+            text-align: center;
+        }
+        
+        .modified-date {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <!-- 네비게이션 바 포함 -->
+    <div th:replace="~{fragments/navbar :: navbar}"></div>
+    
+    <div class="history-container">
+        <div class="history-title">
+            <h1><i class="fas fa-history"></i> 장비 수정내역</h1>
+            <p>장비 정보의 변경 이력을 확인할 수 있습니다.</p>
+        </div>
+        
+        <div class="filter-container">
+            <form th:action="@{/device/history/list}" method="get" class="filter-form">
+                <select name="schoolId" id="schoolSelect" onchange="this.form.submit()">
+                    <option value="">학교 선택</option>
+                    <option th:each="school : ${schools}" 
+                            th:value="${school.schoolId}"
+                            th:text="${school.schoolName}"
+                            th:selected="${schoolId} == ${school.schoolId}">
+                    </option>
+                </select>
+                
+                <select name="searchType" id="searchTypeSelect" onchange="this.form.submit()">
+                    <option value="">전체 유형</option>
+                    <option th:each="type : ${types}"
+                            th:value="${type}"
+                            th:text="${type}"
+                            th:selected="${searchType} == ${type}">
+                    </option>
+                </select>
+                
+                <input type="text" name="searchKeyword" 
+                       th:value="${searchKeyword}" 
+                       placeholder="모델명, 제조사, IP주소, 고유번호 검색" />
+                
+                <button type="submit">
+                    <i class="fas fa-search"></i> 검색
+                </button>
+                
+                <a th:if="${schoolId != null}"
+                   th:href="@{/device/history/excel(schoolId=${schoolId}, searchType=${searchType}, searchKeyword=${searchKeyword})}" 
+                   class="btn btn-success">
+                    <i class="fas fa-file-excel"></i> 엑셀 다운로드
+                </a>
+            </form>
+        </div>
+        
+        <!-- 메시지 표시 -->
+        <div th:if="${message}" class="message" th:text="${message}"></div>
+        
+
+        
+        <!-- 수정내역 테이블 -->
+        <div th:if="${schoolId != null and historyPage != null and !historyPage.empty}">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>수정일시</th>
+                        <th>고유번호</th>
+                        <th>장비정보</th>
+                        <th>수정필드</th>
+                        <th>변경내용</th>
+                        <th>수정자</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="history : ${historyPage.content}">
+                        <td class="modified-date" th:text="${#temporals.format(history.modifiedAt, 'yyyy-MM-dd HH:mm')}"></td>
+                        <td class="uid-info">
+                            <div th:if="${history.device != null and history.device.uid != null}" 
+                                 th:utext="${@deviceHistoryService.highlightSearchKeyword(history.device.school.schoolId + history.device.uid.displayId, searchKeyword)}">
+                            </div>
+                            <div th:if="${history.device == null or history.device.uid == null}" style="color: #999; font-style: italic;">-</div>
+                        </td>
+                        <td class="device-info">
+                            <div th:if="${history.device != null}" 
+                                 th:utext="${@deviceHistoryService.highlightSearchKeyword((history.device.type != null ? history.device.type : '') + ' - ' + (history.device.manufacturer != null ? history.device.manufacturer : '') + ' ' + (history.device.modelName != null ? history.device.modelName : ''), searchKeyword)}">
+                            </div>
+                            <div th:if="${history.device == null}" style="color: #999; font-style: italic;">-</div>
+                            <div th:if="${history.device != null and history.device.ipAddress != null}" 
+                                 th:utext="${@deviceHistoryService.highlightSearchKeyword('IP: ' + history.device.ipAddress, searchKeyword)}" style="font-size: 0.9em; color: #666;">
+                            </div>
+                        </td>
+                        <td th:utext="${@deviceHistoryService.highlightSearchKeyword(@deviceHistoryService.getFieldNameInKorean(history.fieldName), searchKeyword)}"></td>
+                        <td>
+                            <div class="field-change">
+                                <span class="before-value" th:utext="${@deviceHistoryService.highlightSearchKeyword(history.beforeValue != null ? history.beforeValue : '-', searchKeyword)}"></span>
+                                <span class="arrow">→</span>
+                                <span class="after-value" th:utext="${@deviceHistoryService.highlightSearchKeyword(history.afterValue != null ? history.afterValue : '-', searchKeyword)}"></span>
+                            </div>
+                        </td>
+                        <td class="modified-by" th:utext="${@deviceHistoryService.highlightSearchKeyword(history.modifiedBy != null and history.modifiedBy.name != null ? history.modifiedBy.name : '-', searchKeyword)}"></td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- 페이징 네비게이션 -->
+            <nav class="pagination-container">
+                <!-- 페이징 네비게이션 (학교 선택 시에만 표시) -->
+                <ul class="pagination">
+                    <li th:classappend="${historyPage.number == 0} ? 'disabled'">
+                        <a th:if="${historyPage.number != 0}" 
+                           th:href="@{/device/history/list(
+                               page=${historyPage.number},
+                               schoolId=${schoolId != null ? schoolId : null},
+                               searchType=${searchType != null and searchType != '' ? searchType : null},
+                               searchKeyword=${searchKeyword != null and searchKeyword != '' ? searchKeyword : null}
+                           )}"
+                           th:text="'이전'"></a>
+                        <a th:if="${historyPage.number == 0}" href="javascript:void(0);" th:text="'이전'"></a>
+                    </li>
+                    <li th:each="pageNum : ${#numbers.sequence(1, historyPage.totalPages)}">
+                        <a th:href="@{/device/history/list(
+                               page=${pageNum},
+                               schoolId=${schoolId != null ? schoolId : null},
+                               searchType=${searchType != null and searchType != '' ? searchType : null},
+                               searchKeyword=${searchKeyword != null and searchKeyword != '' ? searchKeyword : null}
+                           )}"
+                           th:text="${pageNum}"
+                           th:classappend="${pageNum == historyPage.number + 1} ? 'active'"></a>
+                    </li>
+                    <li th:classappend="${historyPage.number + 1 == historyPage.totalPages} ? 'disabled'">
+                        <a th:if="${historyPage.number + 1 != historyPage.totalPages}" 
+                           th:href="@{/device/history/list(
+                               page=${historyPage.number + 2},
+                               schoolId=${schoolId != null ? schoolId : null},
+                               searchType=${searchType != null and searchType != '' ? searchType : null},
+                               searchKeyword=${searchKeyword != null and searchKeyword != '' ? searchKeyword : null}
+                           )}"
+                           th:text="'다음'"></a>
+                        <a th:if="${historyPage.number + 1 == historyPage.totalPages}" href="javascript:void(0);" th:text="'다음'"></a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        
+        <!-- 데이터가 없을 때 -->
+        <div th:if="${schoolId != null and historyPage != null and historyPage.empty}" class="no-data">
+            <i class="fas fa-info-circle"></i>
+            <p>수정내역이 없습니다.</p>
+        </div>
+        
+        <!-- 학교를 선택하지 않았을 때 -->
+        <div th:if="${schoolId == null}" class="no-data">
+            <i class="fas fa-school"></i>
+            <p>학교를 선택하면 수정내역을 확인할 수 있습니다.</p>
+        </div>
+    </div>
+    
+    <script>
+        // 학교 선택 시 자동 제출
+        document.getElementById('schoolSelect').addEventListener('change', function() {
+            this.form.submit();
+        });
+        
+        // 유형 선택 시 자동 제출
+        document.getElementById('searchTypeSelect').addEventListener('change', function() {
+            this.form.submit();
+        });
+    </script>
+</body>
+</html>

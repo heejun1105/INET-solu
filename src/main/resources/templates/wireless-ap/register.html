@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>무선 AP 등록</title>
+    <link rel="stylesheet" href="/main.css" />
+    <link rel="stylesheet" href="/navbar.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* 전체 컨테이너 스타일 */
+        .register-page-container {
+            background-color: #f5f5f5;
+            min-height: 100vh;
+            padding: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 격자 패턴 배경 */
+        .grid-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(30,58,138,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30,58,138,0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+            z-index: 1;
+        }
+
+        .main-container {
+            position: relative;
+            z-index: 2;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        /* 헤더 섹션 */
+        .modern-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            background: white;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            animation: slideInFromTop 0.6s ease-out;
+        }
+
+        .wifi-icon-header {
+            font-size: 4rem;
+            color: #10b981;
+            margin-bottom: 1rem;
+            animation: pulse 2s infinite;
+        }
+
+        .modern-header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #1e3a8a;
+            margin-bottom: 1rem;
+            text-shadow: none;
+        }
+
+        .modern-header .subtitle {
+            font-size: 1.2rem;
+            color: #64748b;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+
+        .navigation-links {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .nav-link-modern {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+        }
+
+        .nav-link-modern:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+            color: white;
+        }
+
+        .nav-link-modern.secondary {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+        }
+
+        .nav-link-modern.secondary:hover {
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+        }
+
+        /* 폼 카드 */
+        .form-card {
+            background: white;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 24px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            animation: slideInFromBottom 0.6s ease-out;
+        }
+
+        /* 폼 그리드 */
+        .form-grid-modern {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .form-group-modern {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group-modern.full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .form-group-modern label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.75rem;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-group-modern label.required::after {
+            content: "*";
+            color: #f87171;
+            font-weight: bold;
+            margin-left: 0.25rem;
+        }
+
+        .form-group-modern input,
+        .form-group-modern select,
+        .form-group-modern textarea {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: #374151;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group-modern input::placeholder,
+        .form-group-modern textarea::placeholder {
+            color: #9ca3af;
+        }
+
+        .form-group-modern input:focus,
+        .form-group-modern select:focus,
+        .form-group-modern textarea:focus {
+            outline: none;
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .form-group-modern option {
+            background: white;
+            color: #374151;
+        }
+
+        /* 폼 도움말 */
+        .form-help {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-top: 0.5rem;
+        }
+        
+        /* 섹션 헤더 */
+        .section-header-modern {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .section-header-modern h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin: 0;
+        }
+
+        .section-header-modern i {
+            font-size: 1.5rem;
+            color: #60a5fa;
+            background: rgba(96, 165, 250, 0.1);
+            padding: 0.5rem;
+            border-radius: 10px;
+        }
+        
+        /* 버튼 스타일 */
+        .form-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 3rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn-modern {
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: 140px;
+            justify-content: center;
+        }
+        
+        .btn-primary-modern {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-primary-modern:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+            color: white;
+        }
+        
+        .btn-secondary-modern {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+        }
+        
+        .btn-secondary-modern:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+            color: white;
+        }
+
+        /* 애니메이션 */
+        @keyframes slideInFromTop {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInFromBottom {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+        }
+
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 0 1rem;
+            }
+            
+            .form-grid-modern {
+                grid-template-columns: 1fr;
+            }
+            
+            .modern-header h1 {
+                font-size: 2.5rem;
+            }
+            
+            .form-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn-modern {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+
+        /* 로딩 스타일 */
+        .loading-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid #10b981;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div th:replace="~{fragments/navbar :: navbar}"></div>
+    
+    <div class="register-page-container">
+        <div class="grid-overlay"></div>
+        
+        <div class="main-container">
+            <!-- 헤더 섹션 -->
+            <div class="modern-header">
+                <div class="wifi-icon-header">
+                    <i class="fas fa-wifi"></i>
+                </div>
+                <h1>무선 AP 등록</h1>
+                <p class="subtitle">새로운 무선 액세스 포인트 정보를 등록합니다</p>
+                <div class="navigation-links">
+                    <a href="/wireless-ap/list" class="nav-link-modern">
+                        <i class="fas fa-list"></i>
+                        목록으로
+                    </a>
+                    <a href="/wireless-ap/upload" class="nav-link-modern secondary">
+                        <i class="fas fa-upload"></i>
+                        엑셀 업로드
+                    </a>
+                </div>
+            </div>
+            
+            <!-- 등록 폼 -->
+            <form th:action="@{/wireless-ap/register}" method="post" th:object="${wirelessAp}" id="registerForm">
+                
+                <!-- 기본 정보 섹션 -->
+                <div class="form-card">
+                    <div class="section-header-modern">
+                        <i class="fas fa-info-circle"></i>
+                        <h3>기본 정보</h3>
+                    </div>
+                    
+                    <div class="form-grid-modern">
+                        <!-- 학교 선택 -->
+                        <div class="form-group-modern">
+                            <label class="required">
+                                <i class="fas fa-school"></i>
+                                학교
+                            </label>
+                            <select name="schoolId" id="schoolSelect" required onchange="updateClassrooms()">
+                                <option value="">학교를 선택하세요</option>
+                                <option th:each="school : ${schools}" 
+                                        th:value="${school.schoolId}" 
+                                        th:text="${school.schoolName}">
+                                </option>
+                            </select>
+                            <div class="form-help">무선 AP가 설치될 학교를 선택하세요.</div>
+                        </div>
+                        
+                        <!-- 위치(교실) 선택 -->
+                        <div class="form-group-modern">
+                            <label class="required">
+                                <i class="fas fa-map-marker-alt"></i>
+                                설치 위치 (교실)
+                            </label>
+                            <select name="locationId" id="classroomSelect" required>
+                                <option value="">먼저 학교를 선택하세요</option>
+                            </select>
+                            <div class="form-help">무선 AP가 설치될 교실을 선택하세요.</div>
+                        </div>
+
+                        <!-- 교실구분 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-chalkboard"></i>
+                                교실구분
+                            </label>
+                            <input type="text" th:field="*{classroomType}" 
+                                   placeholder="예: 1, 2, 3, 4, 5..." 
+                                   pattern="[0-9]+">
+                            <div class="form-help">교실의 용도나 구분을 숫자로 입력하세요. (예: 1=일반교실, 2=기타, 3=지원공간, 4,5,6...)</div>
+                        </div>
+
+                        <!-- 새 라벨 번호 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-tag"></i>
+                                새 라벨 번호
+                            </label>
+                            <input type="text" th:field="*{newLabelNumber}" 
+                                   placeholder="새 라벨 번호를 입력하세요">
+                            <div class="form-help">새로 부여될 라벨 번호입니다.</div>
+                        </div>
+
+                        <!-- 장비 번호 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-barcode"></i>
+                                장비 번호
+                            </label>
+                            <input type="text" th:field="*{deviceNumber}" 
+                                   placeholder="장비 번호를 입력하세요">
+                            <div class="form-help">제조사에서 제공하는 장비 고유 번호입니다.</div>
+                        </div>
+
+                        <!-- AP 년도 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-calendar-alt"></i>
+                                AP 년도
+                            </label>
+                            <input type="number" name="apYear" min="2000" max="2050" 
+                                   placeholder="예: 2024">
+                            <div class="form-help">AP 도입 또는 설치 년도를 입력하세요.</div>
+                        </div>
+                    </div>
+                        </div>
+
+                <!-- 제품 정보 섹션 -->
+                <div class="form-card">
+                    <div class="section-header-modern">
+                        <i class="fas fa-cogs"></i>
+                        <h3>제품 정보</h3>
+                        </div>
+
+                    <div class="form-grid-modern">
+                        <!-- 제조사 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-industry"></i>
+                                제조사
+                            </label>
+                            <input type="text" th:field="*{manufacturer}" 
+                                   placeholder="예: Cisco, Ubiquiti, NETGEAR">
+                            <div class="form-help">무선 AP 제조사명을 입력하세요.</div>
+                        </div>
+
+                        <!-- 모델명 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-microchip"></i>
+                                모델명
+                            </label>
+                            <input type="text" th:field="*{model}" 
+                                   placeholder="예: WAP121, UAP-AC-LR">
+                            <div class="form-help">정확한 모델명을 입력하세요.</div>
+                        </div>
+
+                        <!-- MAC 주소 -->
+                        <div class="form-group-modern full-width">
+                            <label>
+                                <i class="fas fa-network-wired"></i>
+                                MAC 주소
+                            </label>
+                            <input type="text" th:field="*{macAddress}" 
+                                   placeholder="MAC 주소를 입력하세요">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 이전 정보 섹션 -->
+                <div class="form-card">
+                    <div class="section-header-modern">
+                        <i class="fas fa-history"></i>
+                        <h3>이전 정보 (선택사항)</h3>
+                        </div>
+
+                    <div class="form-grid-modern">
+                        <!-- 이전 위치 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-map-pin"></i>
+                                이전 위치
+                            </label>
+                            <input type="text" th:field="*{prevLocation}" 
+                                   placeholder="이전 설치 위치">
+                            <div class="form-help">이전에 설치되어 있던 위치입니다.</div>
+                        </div>
+
+                        <!-- 이전 라벨 번호 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-tags"></i>
+                                이전 라벨 번호
+                            </label>
+                            <input type="text" th:field="*{prevLabelNumber}" 
+                                   placeholder="이전 라벨 번호">
+                            <div class="form-help">이전에 사용하던 라벨 번호입니다.</div>
+                        </div>
+
+                        <!-- 속도 -->
+                        <div class="form-group-modern">
+                            <label>
+                                <i class="fas fa-tachometer-alt"></i>
+                                속도
+                            </label>
+                            <input type="text" th:field="*{speed}" 
+                                   placeholder="예: 100Mbps, 1Gbps">
+                            <div class="form-help">무선 AP의 네트워크 속도를 입력하세요.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 버튼 영역 -->
+                    <div class="form-buttons">
+                    <button type="submit" class="btn-modern btn-primary-modern">
+                        <i class="fas fa-plus" style="color: white;"></i>
+                        등록하기
+                        </button>
+                    <a href="/wireless-ap/list" class="btn-modern btn-secondary-modern">
+                        <i class="fas fa-times" style="color: white;"></i>
+                        취소
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    <!-- 로딩 오버레이 -->
+    <div class="loading-container" id="loadingContainer">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <div th:replace="~{fragments/footer :: footer}"></div>
+    
+    <script>
+        // 학교별 교실 목록 업데이트 함수
+        function updateClassrooms() {
+            const schoolSelect = document.getElementById('schoolSelect');
+            const classroomSelect = document.getElementById('classroomSelect');
+            const schoolId = schoolSelect.value;
+            
+            // 교실 선택 초기화
+            classroomSelect.innerHTML = '<option value="">교실을 선택하세요</option>';
+            
+            if (schoolId) {
+                // 로딩 표시
+                classroomSelect.innerHTML = '<option value="">로딩 중...</option>';
+                
+                // 학교별 교실 목록 조회
+                fetch(`/wireless-ap/api/classrooms/${schoolId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(classrooms => {
+                        classroomSelect.innerHTML = '<option value="">교실을 선택하세요</option>';
+                        
+                        if (classrooms && classrooms.length > 0) {
+                            classrooms.forEach(classroom => {
+                                const option = document.createElement('option');
+                                option.value = classroom.classroomId;
+                                option.textContent = classroom.roomName;
+                                classroomSelect.appendChild(option);
+                            });
+                        } else {
+                            classroomSelect.innerHTML = '<option value="">등록된 교실이 없습니다</option>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching classrooms:', error);
+                        classroomSelect.innerHTML = '<option value="">교실 목록을 불러올 수 없습니다</option>';
+                    });
+            } else {
+                classroomSelect.innerHTML = '<option value="">먼저 학교를 선택하세요</option>';
+            }
+        }
+
+        // 폼 제출 시 로딩 표시
+        document.getElementById('registerForm').addEventListener('submit', function(e) {
+            const schoolId = document.getElementById('schoolSelect').value;
+            const classroomId = document.getElementById('classroomSelect').value;
+            
+            if (!schoolId) {
+                e.preventDefault();
+                alert('학교를 선택해주세요.');
+                return false;
+            }
+            
+            if (!classroomId) {
+                e.preventDefault();
+                alert('교실을 선택해주세요.');
+                return false;
+            }
+            
+            // 로딩 화면 표시
+            document.getElementById('loadingContainer').style.display = 'flex';
+        });
+        
+
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // 폼 검증 메시지 스타일링
+            const inputs = document.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                input.addEventListener('invalid', function(e) {
+                    e.target.style.borderColor = '#f87171';
+                });
+                
+                input.addEventListener('input', function(e) {
+                    if (e.target.checkValidity()) {
+                        e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,2249 @@
+package com.inet.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.inet.entity.Device;
+import com.inet.entity.School;
+import com.inet.repository.DeviceRepository;
+import com.inet.repository.SchoolRepository;
+import com.inet.entity.Classroom;
+import com.inet.repository.ClassroomRepository;
+import com.inet.entity.Manage;
+import com.inet.repository.ManageRepository;
+import com.inet.entity.Operator;
+import com.inet.service.OperatorService;
+import com.inet.service.ClassroomService;
+import com.inet.entity.Uid;
+import com.inet.service.UidService;
+import com.inet.entity.DeviceHistory;
+import com.inet.entity.User;
+import com.inet.service.DeviceHistoryService;
+import com.inet.service.ManageService;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.ByteArrayOutputStream;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.ArrayList;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.IOException;
+import java.io.OutputStream;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Map;
+import java.util.stream.Collectors;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
+@Service
+@Transactional
+public class DeviceService {
+    
+    private static final Logger log = LoggerFactory.getLogger(DeviceService.class);
+    
+    private final DeviceRepository deviceRepository;
+    private final SchoolRepository schoolRepository;
+    private final ClassroomRepository classroomRepository;
+    private final OperatorService operatorService;
+    private final ManageRepository manageRepository;
+    private final ClassroomService classroomService;
+    private final UidService uidService;
+    private final DeviceHistoryService deviceHistoryService;
+    private final ManageService manageService;
+    
+    public DeviceService(DeviceRepository deviceRepository, SchoolRepository schoolRepository, 
+                        ClassroomRepository classroomRepository, OperatorService operatorService,
+                        ManageRepository manageRepository, ClassroomService classroomService,
+                        UidService uidService, DeviceHistoryService deviceHistoryService,
+                        ManageService manageService) {
+        this.deviceRepository = deviceRepository;
+        this.schoolRepository = schoolRepository;
+        this.classroomRepository = classroomRepository;
+        this.operatorService = operatorService;
+        this.manageRepository = manageRepository;
+        this.classroomService = classroomService;
+        this.uidService = uidService;
+        this.deviceHistoryService = deviceHistoryService;
+        this.manageService = manageService;
+    }
+    
+    @PersistenceContext
+    private EntityManager entityManager;
+    
+    // Create
+    public Device saveDevice(Device device) {
+        // 고유번호 중복 검증
+        if (device.getUid() != null && isUidDuplicate(device.getUid(), null)) {
+            throw new RuntimeException("동일한 고유번호가 이미 존재합니다: " + 
+                device.getUid().getCate() + "-" + device.getUid().getMfgYear() + "-" + 
+                String.format("%04d", device.getUid().getIdNumber()));
+        }
+        
+        // 관리번호 중복 검증
+        if (device.getManage() != null && isManageDuplicate(device.getManage(), null)) {
+            throw new RuntimeException("동일한 관리번호가 이미 존재합니다: " + 
+                device.getManage().getManageCate() + "-" + device.getManage().getYear() + "-" + 
+                device.getManage().getManageNum());
+        }
+        
+        // IP 주소 중복 검증
+        if (device.getIpAddress() != null && !device.getIpAddress().trim().isEmpty()) {
+            Optional<Device> existingDevice = deviceRepository.findByIpAddress(device.getIpAddress().trim());
+            if (existingDevice.isPresent()) {
+                Device existing = existingDevice.get();
+                String locationInfo = existing.getClassroom() != null && existing.getClassroom().getRoomName() != null 
+                    ? existing.getClassroom().getRoomName() 
+                    : "위치 미지정";
+                
+                // 고유번호 정보
+                String uidInfo = "미지정";
+                if (existing.getUid() != null) {
+                    String cate = existing.getUid().getCate() != null ? existing.getUid().getCate() : "";
+                    String year = existing.getUid().getMfgYear() != null ? existing.getUid().getMfgYear() : "";
+                    Long idNum = existing.getUid().getIdNumber();
+                    if (idNum != null) {
+                        uidInfo = cate + "-" + year + "-" + String.format("%04d", idNum);
+                    } else if (!cate.isEmpty() || !year.isEmpty()) {
+                        uidInfo = cate + "-" + year;
+                    }
+                }
+                
+                // 관리번호 정보
+                String manageInfo = "미지정";
+                if (existing.getManage() != null) {
+                    String manageCate = existing.getManage().getManageCate() != null ? existing.getManage().getManageCate() : "";
+                    Integer manageYear = existing.getManage().getYear();
+                    Long manageNum = existing.getManage().getManageNum();
+                    if (manageNum != null) {
+                        if (manageYear != null) {
+                            manageInfo = manageCate + "-" + manageYear + "-" + String.format("%02d", manageNum);
+                        } else {
+                            manageInfo = manageCate + "-" + String.format("%02d", manageNum);
+                        }
+                    } else if (!manageCate.isEmpty()) {
+                        manageInfo = manageCate;
+                    }
+                }
+                
+                // 장비종류
+                String deviceType = existing.getType() != null ? existing.getType() : "미지정";
+                
+                // 제품명 (제조사 + 모델명)
+                String productName = "";
+                if (existing.getManufacturer() != null && !existing.getManufacturer().trim().isEmpty()) {
+                    productName = existing.getManufacturer().trim();
+                }
+                if (existing.getModelName() != null && !existing.getModelName().trim().isEmpty()) {
+                    if (!productName.isEmpty()) {
+                        productName += " " + existing.getModelName().trim();
+                    } else {
+                        productName = existing.getModelName().trim();
+                    }
+                }
+                if (productName.isEmpty()) {
+                    productName = "미지정";
+                }
+                
+                throw new RuntimeException("이미 있는 IP 주소입니다. IP: " + device.getIpAddress() + 
+                    ", 기존 장비 정보 - 위치: " + locationInfo + 
+                    ", 고유번호: " + uidInfo + 
+                    ", 관리번호: " + manageInfo + 
+                    ", 장비종류: " + deviceType + 
+                    ", 제품명: " + productName);
+            }
+        }
+        
+        return deviceRepository.save(device);
+    }
+    
+    // Read
+    public List<Device> getAllDevices() {
+        return deviceRepository.findAll();
+    }
+    
+    public List<Device> getDevicesBySchoolId(Long schoolId) {
+        School school = schoolRepository.findById(schoolId)
+                .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        return deviceRepository.findBySchool(school);
+    }
+    
+    public Optional<Device> getDeviceById(Long id) {
+        return deviceRepository.findById(id);
+    }
+    
+    // Update
+    public Device updateDevice(Device device) {
+        return deviceRepository.save(device);
+    }
+    
+    /**
+     * 장비 수정 시 히스토리 저장
+     */
+    @Transactional
+    public void updateDeviceWithHistory(Device updatedDevice, User modifiedBy) {
+        // 데이터베이스에서 원본 장비 정보를 다시 조회 (JPA 영속성 컨텍스트 문제 방지)
+        Device originalDevice = deviceRepository.findById(updatedDevice.getDeviceId())
+                .orElseThrow(() -> new RuntimeException("원본 장비를 찾을 수 없습니다: " + updatedDevice.getDeviceId()));
+        
+        int changeCount = 0;
+        
+        // 각 필드별로 변경사항 확인 및 히스토리 저장
+        if (!equals(originalDevice.getType(), updatedDevice.getType())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "type", 
+                originalDevice.getType(), updatedDevice.getType(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getManufacturer(), updatedDevice.getManufacturer())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "manufacturer", 
+                originalDevice.getManufacturer(), updatedDevice.getManufacturer(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getModelName(), updatedDevice.getModelName())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "modelName", 
+                originalDevice.getModelName(), updatedDevice.getModelName(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getPurchaseDate(), updatedDevice.getPurchaseDate())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "purchaseDate", 
+                originalDevice.getPurchaseDate() != null ? originalDevice.getPurchaseDate().toString() : null,
+                updatedDevice.getPurchaseDate() != null ? updatedDevice.getPurchaseDate().toString() : null, modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getIpAddress(), updatedDevice.getIpAddress())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "ipAddress", 
+                originalDevice.getIpAddress(), updatedDevice.getIpAddress(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getPurpose(), updatedDevice.getPurpose())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "purpose", 
+                originalDevice.getPurpose(), updatedDevice.getPurpose(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getSetType(), updatedDevice.getSetType())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "setType", 
+                originalDevice.getSetType(), updatedDevice.getSetType(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getUnused(), updatedDevice.getUnused())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "unused", 
+                originalDevice.getUnused() != null ? originalDevice.getUnused().toString() : null,
+                updatedDevice.getUnused() != null ? updatedDevice.getUnused().toString() : null, modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getNote(), updatedDevice.getNote())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "note", 
+                originalDevice.getNote(), updatedDevice.getNote(), modifiedBy);
+        }
+        
+        // 연관 엔티티 변경사항 확인
+        if (!equals(originalDevice.getSchool(), updatedDevice.getSchool())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "school", 
+                originalDevice.getSchool() != null ? originalDevice.getSchool().getSchoolName() : null,
+                updatedDevice.getSchool() != null ? updatedDevice.getSchool().getSchoolName() : null, modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getClassroom(), updatedDevice.getClassroom())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "classroom", 
+                originalDevice.getClassroom() != null ? originalDevice.getClassroom().getRoomName() : null,
+                updatedDevice.getClassroom() != null ? updatedDevice.getClassroom().getRoomName() : null, modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getOperator(), updatedDevice.getOperator())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "operator", 
+                originalDevice.getOperator() != null ? originalDevice.getOperator().getName() : null,
+                updatedDevice.getOperator() != null ? updatedDevice.getOperator().getName() : null, modifiedBy);
+        }
+        
+        // 관리번호 변경 감지 (ID 기반 비교)
+        boolean manageChanged = false;
+        String originalManageInfo = null;
+        String updatedManageInfo = null;
+        
+        if (originalDevice.getManage() != null && updatedDevice.getManage() != null) {
+            Manage origManage = originalDevice.getManage();
+            Manage updatedManage = updatedDevice.getManage();
+            
+            // 각 필드별로 비교
+            if (!equals(origManage.getManageCate(), updatedManage.getManageCate()) ||
+                !equals(origManage.getYear(), updatedManage.getYear()) ||
+                !equals(origManage.getManageNum(), updatedManage.getManageNum())) {
+                manageChanged = true;
+            }
+        } else if (originalDevice.getManage() != null || updatedDevice.getManage() != null) {
+            // 하나는 null이고 하나는 null이 아닌 경우
+            manageChanged = true;
+        }
+        
+        if (manageChanged) {
+            changeCount++;
+            
+            // 관리번호 상세 정보 생성
+            if (originalDevice.getManage() != null) {
+                Manage origManage = originalDevice.getManage();
+                originalManageInfo = String.format("%s-%s-%d", 
+                    origManage.getManageCate() != null ? origManage.getManageCate() : "",
+                    origManage.getYear() != null ? origManage.getYear().toString() : "없음",
+                    origManage.getManageNum());
+            }
+            
+            if (updatedDevice.getManage() != null) {
+                Manage updatedManage = updatedDevice.getManage();
+                updatedManageInfo = String.format("%s-%s-%d", 
+                    updatedManage.getManageCate() != null ? updatedManage.getManageCate() : "",
+                    updatedManage.getYear() != null ? updatedManage.getYear().toString() : "없음",
+                    updatedManage.getManageNum());
+            }
+            
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "manage", originalManageInfo, updatedManageInfo, modifiedBy);
+        }
+        
+        // 고유번호 변경 감지 (ID 기반 비교)
+        boolean uidChanged = false;
+        String originalUidInfo = null;
+        String updatedUidInfo = null;
+        
+        if (originalDevice.getUid() != null && updatedDevice.getUid() != null) {
+            Uid origUid = originalDevice.getUid();
+            Uid updatedUid = updatedDevice.getUid();
+            
+            // 각 필드별로 비교
+            if (!equals(origUid.getCate(), updatedUid.getCate()) ||
+                !equals(origUid.getMfgYear(), updatedUid.getMfgYear()) ||
+                !equals(origUid.getIdNumber(), updatedUid.getIdNumber())) {
+                uidChanged = true;
+            }
+        } else if (originalDevice.getUid() != null || updatedDevice.getUid() != null) {
+            // 하나는 null이고 하나는 null이 아닌 경우
+            uidChanged = true;
+        }
+        
+        if (uidChanged) {
+            changeCount++;
+            
+            // 고유번호 상세 정보 생성
+            if (originalDevice.getUid() != null) {
+                Uid origUid = originalDevice.getUid();
+                originalUidInfo = String.format("%s-%s-%04d", 
+                    origUid.getCate() != null ? origUid.getCate() : "",
+                    origUid.getMfgYear() != null ? origUid.getMfgYear() : "XX",
+                    origUid.getIdNumber());
+            }
+            
+            if (updatedDevice.getUid() != null) {
+                Uid updatedUid = updatedDevice.getUid();
+                updatedUidInfo = String.format("%s-%s-%04d", 
+                    updatedUid.getCate() != null ? updatedUid.getCate() : "",
+                    updatedUid.getMfgYear() != null ? updatedUid.getMfgYear() : "XX",
+                    updatedUid.getIdNumber());
+            }
+            
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "uid", originalUidInfo, updatedUidInfo, modifiedBy);
+        }
+        
+        // 고유번호 중복 검증 (자기 자신 제외)
+        if (updatedDevice.getUid() != null && isUidDuplicate(updatedDevice.getUid(), updatedDevice.getDeviceId())) {
+            throw new RuntimeException("동일한 고유번호가 이미 존재합니다: " + 
+                updatedDevice.getUid().getCate() + "-" + updatedDevice.getUid().getMfgYear() + "-" + 
+                String.format("%04d", updatedDevice.getUid().getIdNumber()));
+        }
+        
+        // 관리번호 중복 검증 (자기 자신 제외)
+        if (updatedDevice.getManage() != null && isManageDuplicate(updatedDevice.getManage(), updatedDevice.getDeviceId())) {
+            throw new RuntimeException("동일한 관리번호가 이미 존재합니다: " + 
+                updatedDevice.getManage().getManageCate() + "-" + updatedDevice.getManage().getYear() + "-" + 
+                updatedDevice.getManage().getManageNum());
+        }
+        
+        // IP 주소 중복 검증 (자기 자신 제외)
+        if (updatedDevice.getIpAddress() != null && !updatedDevice.getIpAddress().trim().isEmpty()) {
+            Optional<Device> existingDevice = deviceRepository.findByIpAddressExcludingDevice(
+                updatedDevice.getIpAddress().trim(), updatedDevice.getDeviceId());
+            if (existingDevice.isPresent()) {
+                Device existing = existingDevice.get();
+                String locationInfo = existing.getClassroom() != null && existing.getClassroom().getRoomName() != null 
+                    ? existing.getClassroom().getRoomName() 
+                    : "위치 미지정";
+                
+                // 고유번호 정보
+                String uidInfo = "미지정";
+                if (existing.getUid() != null) {
+                    String cate = existing.getUid().getCate() != null ? existing.getUid().getCate() : "";
+                    String year = existing.getUid().getMfgYear() != null ? existing.getUid().getMfgYear() : "";
+                    Long idNum = existing.getUid().getIdNumber();
+                    if (idNum != null) {
+                        uidInfo = cate + "-" + year + "-" + String.format("%04d", idNum);
+                    } else if (!cate.isEmpty() || !year.isEmpty()) {
+                        uidInfo = cate + "-" + year;
+                    }
+                }
+                
+                // 관리번호 정보
+                String manageInfo = "미지정";
+                if (existing.getManage() != null) {
+                    String manageCate = existing.getManage().getManageCate() != null ? existing.getManage().getManageCate() : "";
+                    Integer manageYear = existing.getManage().getYear();
+                    Long manageNum = existing.getManage().getManageNum();
+                    if (manageNum != null) {
+                        if (manageYear != null) {
+                            manageInfo = manageCate + "-" + manageYear + "-" + String.format("%02d", manageNum);
+                        } else {
+                            manageInfo = manageCate + "-" + String.format("%02d", manageNum);
+                        }
+                    } else if (!manageCate.isEmpty()) {
+                        manageInfo = manageCate;
+                    }
+                }
+                
+                // 장비종류
+                String deviceType = existing.getType() != null ? existing.getType() : "미지정";
+                
+                // 제품명 (제조사 + 모델명)
+                String productName = "";
+                if (existing.getManufacturer() != null && !existing.getManufacturer().trim().isEmpty()) {
+                    productName = existing.getManufacturer().trim();
+                }
+                if (existing.getModelName() != null && !existing.getModelName().trim().isEmpty()) {
+                    if (!productName.isEmpty()) {
+                        productName += " " + existing.getModelName().trim();
+                    } else {
+                        productName = existing.getModelName().trim();
+                    }
+                }
+                if (productName.isEmpty()) {
+                    productName = "미지정";
+                }
+                
+                throw new RuntimeException("이미 있는 IP 주소입니다. IP: " + updatedDevice.getIpAddress() + 
+                    ", 기존 장비 정보 - 위치: " + locationInfo + 
+                    ", 고유번호: " + uidInfo + 
+                    ", 관리번호: " + manageInfo + 
+                    ", 장비종류: " + deviceType + 
+                    ", 제품명: " + productName);
+            }
+        }
+        
+        // 히스토리 저장 후에 장비 저장
+        deviceRepository.save(updatedDevice);
+    }
+    
+    /**
+     * 두 객체가 같은지 비교 (null 안전)
+     */
+    private boolean equals(Object obj1, Object obj2) {
+        if (obj1 == obj2) return true;
+        if (obj1 == null || obj2 == null) return false;
+        return obj1.equals(obj2);
+    }
+    
+    /**
+     * 고유번호 중복 검증
+     */
+    public boolean isUidDuplicate(Uid uid, Long excludeDeviceId) {
+        if (uid == null) return false;
+        
+        // 같은 학교 내에서 동일한 고유번호가 있는지 확인
+        List<Device> devicesWithSameUid = deviceRepository.findBySchoolAndUidCateAndUidMfgYearAndUidIdNumber(
+            uid.getSchool(), uid.getCate(), uid.getMfgYear(), uid.getIdNumber());
+        
+        // excludeDeviceId가 있으면 해당 장비는 제외
+        return devicesWithSameUid.stream()
+            .anyMatch(device -> !device.getDeviceId().equals(excludeDeviceId));
+    }
+    
+    /**
+     * 관리번호 중복 검증
+     */
+    public boolean isManageDuplicate(Manage manage, Long excludeDeviceId) {
+        if (manage == null) return false;
+        
+        // 같은 학교 내에서 동일한 관리번호가 있는지 확인
+        List<Device> devicesWithSameManage = deviceRepository.findBySchoolAndManageManageCateAndManageYearAndManageManageNum(
+            manage.getSchool(), manage.getManageCate(), manage.getYear(), manage.getManageNum());
+        
+        // excludeDeviceId가 있으면 해당 장비는 제외
+        return devicesWithSameManage.stream()
+            .anyMatch(device -> !device.getDeviceId().equals(excludeDeviceId));
+    }
+    
+
+    
+    // Delete
+    @Transactional
+    public void deleteDevice(Long id) {
+        Device device = deviceRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Device not found with id: " + id));
+        
+        // 장비의 운영자 참조를 null로 설정
+        device.setOperator(null);
+        deviceRepository.save(device);
+        
+        // 장비 삭제
+        deviceRepository.deleteById(id);
+    }
+
+    // 페이징 + 학교 + 타입 + 교실 조건 검색
+    public Page<Device> getDevices(Long schoolId, String type, Long classroomId, Pageable pageable) {
+        if (schoolId != null && type != null && !type.isEmpty() && classroomId != null) {
+            School school = schoolRepository.findById(schoolId)
+                .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+            Classroom classroom = classroomRepository.findById(classroomId)
+                .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+            return deviceRepository.findBySchoolAndTypeAndClassroom(school, type, classroom, pageable);
+        } else if (schoolId != null && type != null && !type.isEmpty()) {
+            School school = schoolRepository.findById(schoolId)
+                .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+            return deviceRepository.findBySchoolAndType(school, type, pageable);
+        } else if (schoolId != null && classroomId != null) {
+            School school = schoolRepository.findById(schoolId)
+                .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+            Classroom classroom = classroomRepository.findById(classroomId)
+                .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+            return deviceRepository.findBySchoolAndClassroom(school, classroom, pageable);
+        } else if (schoolId != null) {
+            School school = schoolRepository.findById(schoolId)
+                .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+            return deviceRepository.findBySchool(school, pageable);
+        } else if (type != null && !type.isEmpty()) {
+            return deviceRepository.findByType(type, pageable);
+        } else if (classroomId != null) {
+            Classroom classroom = classroomRepository.findById(classroomId)
+                .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+            return deviceRepository.findByClassroom(classroom, pageable);
+        } else {
+            return deviceRepository.findAll(pageable);
+        }
+    }
+
+    // type 목록 조회
+    public List<String> getAllTypes() {
+        return deviceRepository.findDistinctTypes();
+    }
+
+    public List<Device> findBySchool(Long schoolId) {
+        return deviceRepository.findBySchoolSchoolId(schoolId);
+    }
+
+    public Optional<byte[]> generateDeviceLedgerExcel(Long schoolId) {
+        List<Device> devices = findBySchool(schoolId);
+        if (devices.isEmpty()) {
+            return Optional.empty();
+        }
+        
+        // 페이지 다운로드와 동일한 순서로 정렬 (교실 순서, 세트 타입, 담당자 순)
+        devices.sort((d1, d2) -> {
+            // 1. 교실 기준 정렬 (순서 우선, 없으면 교실명)
+            Classroom classroom1 = d1.getClassroom();
+            Classroom classroom2 = d2.getClassroom();
+            
+            if (classroom1 == null && classroom2 == null) {
+                // 둘 다 교실이 없으면 다음 정렬 기준으로
+            } else if (classroom1 == null) {
+                return 1; // 교실이 없는 장비는 뒤로
+            } else if (classroom2 == null) {
+                return -1; // 교실이 없는 장비는 뒤로
+            } else {
+                Integer order1 = classroom1.getDisplayOrder();
+                Integer order2 = classroom2.getDisplayOrder();
+                
+                // 둘 다 순서가 있는 경우
+                if (order1 != null && order2 != null) {
+                    int orderCompare = order1.compareTo(order2);
+                    if (orderCompare != 0) {
+                        return orderCompare;
+                    }
+                }
+                // c1만 순서가 있는 경우
+                else if (order1 != null) {
+                    return -1;
+                }
+                // c2만 순서가 있는 경우
+                else if (order2 != null) {
+                    return 1;
+                }
+                
+                // 둘 다 순서가 없는 경우 교실명 기준
+                String name1 = classroom1.getRoomName() != null ? classroom1.getRoomName() : "";
+                String name2 = classroom2.getRoomName() != null ? classroom2.getRoomName() : "";
+                int classroomCompare = name1.compareTo(name2);
+                if (classroomCompare != 0) return classroomCompare;
+            }
+            
+            // 2. 세트 타입 기준 정렬 (있는 경우)
+            String setType1 = d1.getSetType() != null && !d1.getSetType().trim().isEmpty() ? d1.getSetType() : null;
+            String setType2 = d2.getSetType() != null && !d2.getSetType().trim().isEmpty() ? d2.getSetType() : null;
+            
+            // 세트 타입이 있는 경우 우선 정렬
+            if (setType1 != null && setType2 != null) {
+                return setType1.compareTo(setType2);
+            } else if (setType1 != null) {
+                return -1; // d1이 세트 타입이 있으면 앞으로
+            } else if (setType2 != null) {
+                return 1;  // d2가 세트 타입이 있으면 앞으로
+            }
+            
+            // 3. 담당자 기준 정렬
+            String operator1 = d1.getOperator() != null && d1.getOperator().getName() != null ? 
+                               d1.getOperator().getName() : "미지정 담당자";
+            String operator2 = d2.getOperator() != null && d2.getOperator().getName() != null ? 
+                               d2.getOperator().getName() : "미지정 담당자";
+            return operator1.compareTo(operator2);
+        });
+        
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            exportToExcel(devices, outputStream);
+            return Optional.of(outputStream.toByteArray());
+        } catch (IOException e) {
+            throw new IllegalStateException("장비 관리대장 엑셀 생성 중 오류가 발생했습니다.", e);
+        }
+    }
+
+    public List<Device> findByType(String type) {
+        return deviceRepository.findByType(type);
+    }
+
+    public List<Device> findBySchoolAndType(Long schoolId, String type) {
+        return deviceRepository.findBySchoolSchoolIdAndType(schoolId, type);
+    }
+
+    public List<Device> findAll() {
+        return deviceRepository.findAll();
+    }
+
+    public void exportToExcel(List<Device> devices, OutputStream outputStream) throws IOException {
+        exportToExcel(devices, outputStream, null);
+    }
+    
+    public void exportToExcel(List<Device> devices, OutputStream outputStream, Map<Long, String> inspectionStatuses) throws IOException {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("장비 목록");
+        
+        // 1. 제목 스타일 (학교명 + 교실배치별 장비현황)
+        CellStyle titleStyle = workbook.createCellStyle();
+        Font titleFont = workbook.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 36);
+        titleStyle.setFont(titleFont);
+        titleStyle.setAlignment(HorizontalAlignment.CENTER);
+        titleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        titleStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        titleStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // 제목 행의 테두리 제거 (이미지처럼 A1셀 아래 테두리 제거)
+        titleStyle.setBorderTop(BorderStyle.NONE);
+        titleStyle.setBorderBottom(BorderStyle.NONE);
+        titleStyle.setBorderLeft(BorderStyle.NONE);
+        titleStyle.setBorderRight(BorderStyle.NONE);
+        titleStyle.setWrapText(true); // 셀에 맞춤
+        
+        // 2. 날짜 스타일 (배경색 없음)
+        CellStyle dateStyle = workbook.createCellStyle();
+        dateStyle.setAlignment(HorizontalAlignment.RIGHT);
+        Font dateFont = workbook.createFont();
+        dateFont.setBold(true);
+        dateStyle.setFont(dateFont);
+        // 배경색 제거 (기본 스타일 유지)
+        
+        // 3. 헤더 스타일
+        CellStyle headerStyle = workbook.createCellStyle();
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerStyle.setFont(headerFont);
+        headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        headerStyle.setBorderTop(BorderStyle.THIN);
+        headerStyle.setBorderBottom(BorderStyle.THIN);
+        headerStyle.setBorderLeft(BorderStyle.THIN);
+        headerStyle.setBorderRight(BorderStyle.THIN);
+        
+        // 4. 데이터 스타일
+        CellStyle dataStyle = workbook.createCellStyle();
+        dataStyle.setAlignment(HorizontalAlignment.CENTER);
+        dataStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        dataStyle.setBorderTop(BorderStyle.THIN);
+        dataStyle.setBorderBottom(BorderStyle.THIN);
+        dataStyle.setBorderLeft(BorderStyle.THIN);
+        dataStyle.setBorderRight(BorderStyle.THIN);
+        dataStyle.setWrapText(true); // 셀에 맞춤
+        
+        // 학교명 가져오기 - 첫 번째 장비의 학교명 사용 (또는 선택된 학교명)
+        String schoolName = "학교";
+        if (!devices.isEmpty() && devices.get(0).getSchool() != null && devices.get(0).getSchool().getSchoolName() != null) {
+            schoolName = devices.get(0).getSchool().getSchoolName();
+        }
+        
+        // 장비 정보의 마지막 수정일자 조회 (모든 장비 중 가장 최근 수정일자)
+        java.time.LocalDateTime lastModifiedDateTime = null;
+        for (Device device : devices) {
+            Optional<java.time.LocalDateTime> lastModified = deviceHistoryService.getLastModifiedDate(device);
+            if (lastModified.isPresent()) {
+                if (lastModifiedDateTime == null || lastModified.get().isAfter(lastModifiedDateTime)) {
+                    lastModifiedDateTime = lastModified.get();
+                }
+            }
+        }
+        
+        // 작성일자: 마지막 수정일자가 있으면 그것을 사용, 없으면 현재 날짜
+        String dateStr;
+        if (lastModifiedDateTime != null) {
+            dateStr = lastModifiedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        } else {
+            dateStr = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        }
+        
+        // 검사 상태가 있는지 확인
+        boolean hasInspectionStatus = inspectionStatuses != null && !inspectionStatuses.isEmpty();
+        
+        // 첫번째 행: 제목 (학교명 + 교실배치별 장비현황)
+        Row titleRow = sheet.createRow(0);
+        titleRow.setHeightInPoints(60); // 행 높이 60
+        Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue(schoolName + " 교실배치별 장비현황" + (hasInspectionStatus ? " (검사결과 포함)" : ""));
+        titleCell.setCellStyle(titleStyle);
+        int mergeEndCol = hasInspectionStatus ? 14 : 13; // 검사상태 컬럼 포함 여부
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, mergeEndCol));
+        
+        // 두번째 행: 작성일자
+        Row dateRow = sheet.createRow(1);
+        Cell dateCell = dateRow.createCell(mergeEndCol - 1); // 마지막 컬럼에서 두 번째
+        dateCell.setCellValue("작성일자");
+        dateCell.setCellStyle(dateStyle);
+        
+        Cell todayCell = dateRow.createCell(mergeEndCol); // 마지막 컬럼
+        todayCell.setCellValue(dateStr);
+        todayCell.setCellStyle(dateStyle);
+        
+        // 세번째 행: 헤더
+        Row headerRow = sheet.createRow(2);
+        headerRow.setHeightInPoints(25); // 행 높이 25
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        headerStyle.setWrapText(true); // 셀에 맞춤
+        String[] headers = {"No", "고유번호", "관리번호", "종류", "직위", "취급자", "제조사", "모델명", "도입일자", "현IP주소", "설치장소", "용도", "세트분류", "비고"};
+        if (hasInspectionStatus) {
+            // 검사상태 컬럼 추가
+            String[] extendedHeaders = new String[headers.length + 1];
+            System.arraycopy(headers, 0, extendedHeaders, 0, headers.length);
+            extendedHeaders[headers.length] = "검사확인";
+            headers = extendedHeaders;
+        }
+        
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        // 데이터 행 추가
+        int rowNum = 3; // 4번째 행부터 데이터 시작
+        
+        // 교실, 세트 타입, 담당자 순으로 정렬된 데이터 추가
+        for (int i = 0; i < devices.size(); i++) {
+            Device device = devices.get(i);
+            Row row = sheet.createRow(rowNum++);
+            row.setHeightInPoints(25); // 데이터 행 높이 25
+            
+            // 각 열에 데이터 추가 및 스타일 적용
+            int totalCols = hasInspectionStatus ? 15 : 14; // 검사상태 컬럼 포함 여부
+            for (int col = 0; col < totalCols; col++) {
+                Cell cell = row.createCell(col);
+                cell.setCellStyle(dataStyle);
+                
+                // 각 열의 데이터 설정
+                switch (col) {
+                    case 0: // No (순번)
+                        cell.setCellValue(i + 1);
+                        break;
+                    case 1: // 고유번호
+                        String uidDisplay = "";
+                        if (device.getUid() != null && device.getSchool() != null) {
+                            uidDisplay = device.getSchool().getSchoolId() + device.getUid().getDisplayId();
+                        }
+                        cell.setCellValue(uidDisplay);
+                        break;
+                    case 2: // 관리번호
+                        String manageNo = "";
+                        Manage manage = device.getManage();
+                        if (manage != null) {
+                            String cate = manage.getManageCate() != null ? manage.getManageCate() : "";
+                            String year = manage.getYear() != null ? manage.getYear().toString() : "";
+                            String num = manage.getManageNum() != null ? manage.getManageNum().toString() : "";
+                            manageNo = (cate + (year.isEmpty() ? "" : ("-" + year)) + (num.isEmpty() ? "" : ("-" + num))).replaceAll("-$", "");
+                        }
+                        cell.setCellValue(manageNo);
+                        break;
+                    case 3: // 종류
+                        cell.setCellValue(device.getType() != null ? device.getType() : "");
+                        break;
+                    case 4: // 직위
+                        cell.setCellValue(device.getOperator() != null && device.getOperator().getPosition() != null ? device.getOperator().getPosition() : "");
+                        break;
+                    case 5: // 취급자
+                        cell.setCellValue(device.getOperator() != null && device.getOperator().getName() != null ? device.getOperator().getName() : "");
+                        break;
+                    case 6: // 제조사
+                        cell.setCellValue(device.getManufacturer() != null ? device.getManufacturer() : "");
+                        break;
+                    case 7: // 모델명
+                        cell.setCellValue(device.getModelName() != null ? device.getModelName() : "");
+                        break;
+                    case 8: // 도입일자
+                        cell.setCellValue(device.getPurchaseDate() != null ? device.getPurchaseDate().toString() : "");
+                        break;
+                    case 9: // 현IP주소
+                        cell.setCellValue(device.getIpAddress() != null ? device.getIpAddress() : "");
+                        break;
+                    case 10: // 설치장소
+                        cell.setCellValue(device.getClassroom() != null && device.getClassroom().getRoomName() != null ? device.getClassroom().getRoomName() : "");
+                        break;
+                    case 11: // 용도
+                        cell.setCellValue(device.getPurpose() != null ? device.getPurpose() : "");
+                        break;
+                    case 12: // 세트분류
+                        cell.setCellValue(device.getSetType() != null ? device.getSetType() : "");
+                        break;
+                    case 13: // 비고
+                        cell.setCellValue(device.getNote() != null ? device.getNote() : "");
+                        break;
+                    case 14: // 검사상태 (검사 모드일 때만)
+                        if (hasInspectionStatus && inspectionStatuses != null) {
+                            String status = inspectionStatuses.get(device.getDeviceId());
+                            if (status != null) {
+                                switch (status) {
+                                    case "confirmed":
+                                        cell.setCellValue("확인");
+                                        break;
+                                    case "modified":
+                                        cell.setCellValue("수정");
+                                        break;
+                                    case "unchecked":
+                                    default:
+                                        cell.setCellValue("미확인");
+                                        break;
+                                }
+                            } else {
+                                cell.setCellValue("미확인");
+                            }
+                        }
+                        break;
+                }
+            }
+        }
+
+        // 컬럼 너비 조정
+        for (int i = 0; i < headers.length; i++) {
+            sheet.autoSizeColumn(i);
+            // 최소 너비 보장
+            int currentWidth = sheet.getColumnWidth(i);
+            if (currentWidth < 3000) {
+                sheet.setColumnWidth(i, 3000);
+            }
+        }
+
+        // 첫 번째 컬럼(No)은 좁게 설정
+        sheet.setColumnWidth(0, 1500);
+        
+        // 비고 컬럼(13번째)에 자동 줄바꿈 설정
+        CellStyle wrappingStyle = workbook.createCellStyle();
+        wrappingStyle.cloneStyleFrom(dataStyle);
+        wrappingStyle.setWrapText(true);
+        
+        // 비고 컬럼에 줄바꿈 스타일 적용
+        for (int i = 3; i < rowNum; i++) {
+            Row row = sheet.getRow(i);
+            if (row != null) {
+                Cell noteCell = row.getCell(13);
+                if (noteCell != null) {
+                    // 기존 텍스트 가져오기
+                    String noteText = noteCell.getStringCellValue();
+                    // 15자마다 줄바꿈 처리
+                    if (noteText != null && noteText.length() > 15) {
+                        noteCell.setCellStyle(wrappingStyle);
+                    }
+                }
+            }
+        }
+
+        // 연도별 총괄표 시트 추가
+        createYearlySummarySheet(workbook, devices, schoolName, dateStr, titleStyle, headerStyle, dataStyle);
+        
+        workbook.write(outputStream);
+        workbook.close();
+    }
+    
+    /**
+     * 연도별 총괄표 시트 생성
+     */
+    private void createYearlySummarySheet(Workbook workbook, List<Device> devices, String schoolName, String dateStr,
+                                          CellStyle titleStyle, CellStyle headerStyle, CellStyle dataStyle) throws IOException {
+        Sheet summarySheet = workbook.createSheet("연도별 총괄표");
+        
+        // 제목 스타일 (폰트 36pt 명시)
+        CellStyle summaryTitleStyle = workbook.createCellStyle();
+        summaryTitleStyle.cloneStyleFrom(titleStyle);
+        Font summaryTitleFont = workbook.createFont();
+        summaryTitleFont.setBold(true);
+        summaryTitleFont.setFontHeightInPoints((short) 36);
+        summaryTitleStyle.setFont(summaryTitleFont);
+        
+        // 날짜 스타일
+        CellStyle summaryDateStyle = workbook.createCellStyle();
+        summaryDateStyle.setAlignment(HorizontalAlignment.RIGHT);
+        summaryDateStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        Font dateFont = workbook.createFont();
+        dateFont.setBold(true);
+        summaryDateStyle.setFont(dateFont);
+        
+        // 합계 행 스타일
+        CellStyle totalRowStyle = workbook.createCellStyle();
+        totalRowStyle.cloneStyleFrom(dataStyle);
+        Font totalFont = workbook.createFont();
+        totalFont.setBold(true);
+        totalRowStyle.setFont(totalFont);
+        totalRowStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        totalRowStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        
+        // 빈 셀 채우기 스타일
+        CellStyle emptyCellStyle = workbook.createCellStyle();
+        emptyCellStyle.cloneStyleFrom(dataStyle);
+        emptyCellStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        emptyCellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        
+        // 첫번째 행: 제목 (학교 이름 제거)
+        Row titleRow = summarySheet.createRow(0);
+        titleRow.setHeightInPoints(60);
+        Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue("정보화장비 연도별 총괄표");
+        titleCell.setCellStyle(summaryTitleStyle);
+        summarySheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 6)); // G열까지 병합 (0-6)
+        
+        // 두번째 행: 작성일자
+        Row dateRow = summarySheet.createRow(1);
+        dateRow.setHeightInPoints(25);
+        Cell dateLabelCell = dateRow.createCell(5);
+        dateLabelCell.setCellValue("작성일자");
+        dateLabelCell.setCellStyle(summaryDateStyle);
+        Cell dateValueCell = dateRow.createCell(6);
+        dateValueCell.setCellValue(dateStr);
+        dateValueCell.setCellStyle(summaryDateStyle);
+        
+        // 현재 행 추적 변수
+        int currentRow = 5; // 기본값: 5행부터 시작
+        
+        // 1. 데스크톱과 노트북 처리
+        List<Device> desktopAndLaptopDevices = devices.stream()
+            .filter(d -> "데스크톱".equals(d.getType()) || "노트북".equals(d.getType()))
+            .collect(Collectors.toList());
+        
+        if (!desktopAndLaptopDevices.isEmpty()) {
+            // 세번째 행: 데스크톱 총계 제목 (3행, 0-based이므로 2)
+            Row sectionTitleRow = summarySheet.createRow(2);
+            sectionTitleRow.setHeightInPoints(19);
+            
+            // 전체 개수 계산
+            int totalCount = desktopAndLaptopDevices.size();
+            
+            // A3에 "데스크톱 총계" 텍스트
+            Cell sectionTitleCell = sectionTitleRow.createCell(0);
+            sectionTitleCell.setCellValue("데스크톱 총계");
+            sectionTitleCell.setCellStyle(headerStyle);
+            
+            // B3부터 G3까지 셀 통합하여 총계 값만 표시 (0-based로는 1부터 6까지)
+            Cell totalCountCell = sectionTitleRow.createCell(1);
+            totalCountCell.setCellValue(totalCount);
+            
+            // 스타일 생성 (채우기 색 없음, 가운데 맞춤)
+            CellStyle totalCountStyle = workbook.createCellStyle();
+            totalCountStyle.setAlignment(HorizontalAlignment.CENTER);
+            totalCountStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            Font totalCountFont = workbook.createFont();
+            totalCountFont.setBold(true);
+            totalCountStyle.setFont(totalCountFont);
+            // 채우기 색 없음 (기본 스타일)
+            
+            totalCountCell.setCellStyle(totalCountStyle);
+            
+            // B3부터 G3까지 셀 병합 (0-based로는 1부터 6까지)
+            summarySheet.addMergedRegion(new CellRangeAddress(2, 2, 1, 6));
+            
+            // 네번째 행: 빈 행 (높이 8pt) - 4행
+            Row emptyRow2 = summarySheet.createRow(3);
+            emptyRow2.setHeightInPoints(8);
+            
+            // 다섯번째 행: 헤더 행 (5행, 0-based이므로 4)
+            Row headerRow = summarySheet.createRow(4);
+            headerRow.setHeightInPoints(19);
+            String[] headers = {"제조년도", "업무", "학급", "컴퓨터실", "기타", "학교", "노트북"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+            
+            // 데스크톱만 manageCate별로 그룹화하고 연도별 집계
+            List<Device> desktopDevices = desktopAndLaptopDevices.stream()
+                .filter(d -> "데스크톱".equals(d.getType()))
+                .collect(Collectors.toList());
+            
+            Map<String, Map<Integer, Long>> desktopStatsByCateAndYear = desktopDevices.stream()
+                .filter(d -> d.getManage() != null && d.getManage().getManageCate() != null && d.getPurchaseDate() != null)
+                .collect(Collectors.groupingBy(
+                    d -> d.getManage().getManageCate(),
+                    Collectors.groupingBy(
+                        d -> d.getPurchaseDate().getYear(),
+                        Collectors.counting()
+                    )
+                ));
+            
+            // 노트북은 type별로 연도별 집계
+            List<Device> laptopDevices = desktopAndLaptopDevices.stream()
+                .filter(d -> "노트북".equals(d.getType()))
+                .collect(Collectors.toList());
+            
+            Map<Integer, Long> laptopStatsByYear = laptopDevices.stream()
+                .filter(d -> d.getPurchaseDate() != null)
+                .collect(Collectors.groupingBy(
+                    d -> d.getPurchaseDate().getYear(),
+                    Collectors.counting()
+                ));
+            
+            // 모든 연도 수집 (데이터가 있는 연도만)
+            Set<Integer> allYears = new java.util.HashSet<>();
+            allYears.addAll(desktopStatsByCateAndYear.values().stream()
+                .flatMap(yearMap -> yearMap.keySet().stream())
+                .collect(Collectors.toSet()));
+            allYears.addAll(laptopStatsByYear.keySet());
+            List<Integer> sortedYears = new ArrayList<>(allYears);
+            sortedYears.sort(Integer::compareTo);
+            
+            // manageCate 순서: 업무, 학급, 컴퓨터실, 기타, 학교
+            List<String> cateOrder = List.of("업무", "학급", "컴퓨터실", "기타", "학교");
+            
+            // 각 연도별로 데이터 행 생성
+            currentRow = 5; // 데이터 행은 6행부터 시작 (0-based이므로 5)
+            for (Integer year : sortedYears) {
+                Row dataRow = summarySheet.createRow(currentRow++);
+                dataRow.setHeightInPoints(19);
+                
+                // 제조년도
+                Cell yearCell = dataRow.createCell(0);
+                yearCell.setCellValue(year);
+                yearCell.setCellStyle(dataStyle);
+                
+                // 각 manageCate별 개수 (데스크톱만)
+                for (int i = 0; i < cateOrder.size(); i++) {
+                    String cate = cateOrder.get(i);
+                    Long count = desktopStatsByCateAndYear.getOrDefault(cate, new java.util.HashMap<>()).getOrDefault(year, 0L);
+                    Cell cell = dataRow.createCell(i + 1);
+                    cell.setCellValue(count.intValue());
+                    cell.setCellStyle(dataStyle);
+                }
+                
+                // 노트북 개수
+                Long laptopCount = laptopStatsByYear.getOrDefault(year, 0L);
+                Cell laptopCell = dataRow.createCell(6);
+                laptopCell.setCellValue(laptopCount.intValue());
+                laptopCell.setCellStyle(dataStyle);
+            }
+            
+            // 합계 행
+            Row totalRow = summarySheet.createRow(currentRow++);
+            totalRow.setHeightInPoints(19);
+            Cell totalLabelCell = totalRow.createCell(0);
+            totalLabelCell.setCellValue("합계");
+            totalLabelCell.setCellStyle(totalRowStyle);
+            
+            // 각 manageCate별 총합 (데스크톱만)
+            for (int i = 0; i < cateOrder.size(); i++) {
+                String cate = cateOrder.get(i);
+                long total = desktopStatsByCateAndYear.getOrDefault(cate, new java.util.HashMap<>()).values().stream()
+                    .mapToLong(Long::longValue).sum();
+                Cell cell = totalRow.createCell(i + 1);
+                cell.setCellValue((int) total);
+                cell.setCellStyle(totalRowStyle);
+            }
+            
+            // 노트북 총합
+            long laptopTotal = laptopStatsByYear.values().stream().mapToLong(Long::longValue).sum();
+            Cell laptopTotalCell = totalRow.createCell(6);
+            laptopTotalCell.setCellValue((int) laptopTotal);
+            laptopTotalCell.setCellStyle(totalRowStyle);
+            
+            currentRow++; // 한 행 건너뛰기
+        }
+        
+        // 2. 나머지 장비들 처리
+        List<Device> otherDevices = devices.stream()
+            .filter(d -> !"데스크톱".equals(d.getType()) && !"노트북".equals(d.getType()))
+            .collect(Collectors.toList());
+        
+        if (!otherDevices.isEmpty()) {
+            // currentRow는 이미 초기화되어 있음 (데스크톱 섹션이 있으면 그 다음 행, 없으면 5행)
+            // 장비 종류별로 그룹화
+            Map<String, List<Device>> devicesByType = otherDevices.stream()
+                .collect(Collectors.groupingBy(d -> d.getType() != null ? d.getType() : "기타"));
+            
+            // 정렬: 모니터, 프린터, TV 먼저, 나머지는 가나다 순
+            List<String> sortedTypes = new ArrayList<>(devicesByType.keySet());
+            sortedTypes.sort((t1, t2) -> {
+                int order1 = getTypeOrder(t1);
+                int order2 = getTypeOrder(t2);
+                if (order1 != order2) {
+                    return Integer.compare(order1, order2);
+                }
+                return t1.compareTo(t2); // 가나다 순
+            });
+            
+            // 6개씩 그룹으로 나누어 처리
+            int typesPerTable = 6;
+            for (int groupStart = 0; groupStart < sortedTypes.size(); groupStart += typesPerTable) {
+                int groupEnd = Math.min(groupStart + typesPerTable, sortedTypes.size());
+                List<String> currentGroup = sortedTypes.subList(groupStart, groupEnd);
+                
+                // 헤더 행
+                Row headerRow = summarySheet.createRow(currentRow++);
+                headerRow.setHeightInPoints(19);
+                Cell yearHeaderCell = headerRow.createCell(0);
+                yearHeaderCell.setCellValue("제조년도");
+                yearHeaderCell.setCellStyle(headerStyle);
+                
+                // 각 장비 종류를 헤더로 추가
+                for (int i = 0; i < currentGroup.size(); i++) {
+                    Cell cell = headerRow.createCell(i + 1);
+                    cell.setCellValue(currentGroup.get(i));
+                    cell.setCellStyle(headerStyle);
+                }
+                
+                // 빈 셀 채우기 (6개가 안 채워진 경우)
+                for (int i = currentGroup.size(); i < typesPerTable; i++) {
+                    Cell cell = headerRow.createCell(i + 1);
+                    cell.setCellValue("");
+                    cell.setCellStyle(emptyCellStyle);
+                }
+                
+                // 각 장비 종류별로 manageCate와 연도별 집계
+                Map<String, Map<String, Map<Integer, Long>>> statsByTypeCateYear = new java.util.HashMap<>();
+                for (String type : currentGroup) {
+                    List<Device> typeDevices = devicesByType.get(type);
+                    Map<String, Map<Integer, Long>> cateYearMap = typeDevices.stream()
+                        .filter(d -> d.getManage() != null && d.getManage().getManageCate() != null && d.getPurchaseDate() != null)
+                        .collect(Collectors.groupingBy(
+                            d -> d.getManage().getManageCate(),
+                            Collectors.groupingBy(
+                                d -> d.getPurchaseDate().getYear(),
+                                Collectors.counting()
+                            )
+                        ));
+                    statsByTypeCateYear.put(type, cateYearMap);
+                }
+                
+                // 모든 연도 수집 (데이터가 있는 연도만)
+                Set<Integer> allYearsForGroup = statsByTypeCateYear.values().stream()
+                    .flatMap(cateMap -> cateMap.values().stream().flatMap(yearMap -> yearMap.keySet().stream()))
+                    .collect(Collectors.toSet());
+                List<Integer> sortedYearsForGroup = new ArrayList<>(allYearsForGroup);
+                sortedYearsForGroup.sort(Integer::compareTo);
+                
+                // 각 연도별로 데이터 행 생성
+                for (Integer year : sortedYearsForGroup) {
+                    Row dataRow = summarySheet.createRow(currentRow++);
+                    dataRow.setHeightInPoints(19);
+                    
+                    // 제조년도
+                    Cell yearCell = dataRow.createCell(0);
+                    yearCell.setCellValue(year);
+                    yearCell.setCellStyle(dataStyle);
+                    
+                    // 각 장비 종류별 총합 (manageCate 구분 없이, 연도별 합계)
+                    for (int i = 0; i < currentGroup.size(); i++) {
+                        String type = currentGroup.get(i);
+                        Map<String, Map<Integer, Long>> cateYearMap = statsByTypeCateYear.get(type);
+                        long total = cateYearMap.values().stream()
+                            .mapToLong(yearMap -> yearMap.getOrDefault(year, 0L))
+                            .sum();
+                        Cell cell = dataRow.createCell(i + 1);
+                        cell.setCellValue((int) total);
+                        cell.setCellStyle(dataStyle);
+                    }
+                    
+                    // 빈 셀 채우기
+                    for (int i = currentGroup.size(); i < typesPerTable; i++) {
+                        Cell cell = dataRow.createCell(i + 1);
+                        cell.setCellValue("");
+                        cell.setCellStyle(emptyCellStyle);
+                    }
+                }
+                
+                // 합계 행
+                Row totalRow = summarySheet.createRow(currentRow++);
+                totalRow.setHeightInPoints(19);
+                Cell totalLabelCell = totalRow.createCell(0);
+                totalLabelCell.setCellValue("합계");
+                totalLabelCell.setCellStyle(totalRowStyle);
+                
+                // 각 장비 종류별 총합
+                for (int i = 0; i < currentGroup.size(); i++) {
+                    String type = currentGroup.get(i);
+                    Map<String, Map<Integer, Long>> cateYearMap = statsByTypeCateYear.get(type);
+                    long total = cateYearMap.values().stream()
+                        .flatMap(yearMap -> yearMap.values().stream())
+                        .mapToLong(Long::longValue)
+                        .sum();
+                    Cell cell = totalRow.createCell(i + 1);
+                    cell.setCellValue((int) total);
+                    cell.setCellStyle(totalRowStyle);
+                }
+                
+                // 빈 셀 채우기
+                for (int i = currentGroup.size(); i < typesPerTable; i++) {
+                    Cell cell = totalRow.createCell(i + 1);
+                    cell.setCellValue("");
+                    cell.setCellStyle(emptyCellStyle);
+                }
+                
+                currentRow++; // 한 행 건너뛰기
+            }
+        }
+        
+        // 컬럼 너비 조정 (너비 14)
+        for (int i = 0; i < 7; i++) { // G열까지 (0-6)
+            summarySheet.setColumnWidth(i, 14 * 256); // Excel 컬럼 너비는 1/256 단위
+        }
+    }
+    
+    /**
+     * 장비 종류 순서 반환 (모니터, 프린터, TV 먼저, 나머지는 가나다 순)
+     */
+    private int getTypeOrder(String type) {
+        if (type == null) return 99;
+        if ("모니터".equals(type)) return 1;
+        if ("프린터".equals(type)) return 2;
+        if ("TV".equals(type)) return 3;
+        return 10; // 나머지는 가나다 순으로 정렬
+    }
+
+    public List<Device> findByClassroomRoomName(String roomName) {
+        return deviceRepository.findByClassroomRoomName(roomName);
+    }
+
+    public List<Device> findBySchoolId(Long schoolId) {
+        return deviceRepository.findBySchoolSchoolId(schoolId);
+    }
+
+    public List<Device> findBySchoolAndTypeAndClassroom(Long schoolId, String type, Long classroomId) {
+        School school = schoolRepository.findById(schoolId)
+            .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        Classroom classroom = classroomRepository.findById(classroomId)
+            .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+        return deviceRepository.findBySchoolAndTypeAndClassroom(school, type, classroom);
+    }
+
+    public List<Device> findBySchoolAndClassroom(Long schoolId, Long classroomId) {
+        School school = schoolRepository.findById(schoolId)
+            .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        Classroom classroom = classroomRepository.findById(classroomId)
+            .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+        return deviceRepository.findBySchoolAndClassroom(school, classroom);
+    }
+
+    public List<Device> findByClassroom(Long classroomId) {
+        Classroom classroom = classroomRepository.findById(classroomId)
+            .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+        return deviceRepository.findByClassroom(classroom);
+    }
+
+    @Transactional
+    public void saveDevicesFromExcel(MultipartFile file, Long schoolId) throws Exception {
+        // 파일 확장자 검증
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null || !(originalFilename.endsWith(".xls") || originalFilename.endsWith(".xlsx"))) {
+            throw new IllegalArgumentException("엑셀 파일(.xls 또는 .xlsx)만 업로드 가능합니다.");
+        }
+
+        // 파일 내용 검증
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("빈 파일입니다. 내용이 있는 엑셀 파일을 업로드해주세요.");
+        }
+
+        School school = schoolRepository.findById(schoolId)
+                .orElseThrow(() -> {
+                    log.error("학교를 찾을 수 없음. 학교 ID: {}", schoolId);
+                    return new IllegalArgumentException("학교를 찾을 수 없습니다.");
+                });
+        
+        List<Device> devices = new ArrayList<>();
+        try (InputStream is = file.getInputStream()) {
+            Workbook workbook = WorkbookFactory.create(is);
+            Sheet sheet = workbook.getSheetAt(0);
+            int rowCount = 0;
+            
+            // 시트에 데이터가 없는 경우 확인
+            if (sheet.getPhysicalNumberOfRows() == 0) {
+                throw new IllegalArgumentException("데이터가 없습니다. 최소한 1개 이상의 데이터행이 필요합니다.");
+            }
+            
+            for (Row row : sheet) {
+                rowCount++;
+                
+                try {
+                    // 빈 행 체크 - 타입(3번째 컬럼)이 비어있으면 스킵
+                    if (isEmptyRow(row)) {
+                        continue;
+                    }
+                    
+                    // UID 정보 처리 (첫 번째 컬럼)
+                    String uidInfo = null;
+                    try {
+                        uidInfo = getCellString(row.getCell(0));
+                    } catch (Exception e) {
+                        // UID 정보는 선택사항이므로 오류 무시
+                    }
+                    
+                    String uidCate = null;
+                    
+                    // 관리번호는 두 번째 컬럼(1)
+                    String manageNo = null;
+                    try {
+                        manageNo = getCellString(row.getCell(1));
+                    } catch (Exception e) {
+                        // 관리번호는 선택사항이므로 오류 무시
+                    }
+                    
+                    // Manage 엔티티 조회/생성 (관리번호가 없으면 null)
+                    Manage manage = null;
+                    if (manageNo != null && !manageNo.trim().isEmpty()) {
+                        try {
+                            ManageNumber mn = parseManageNo(manageNo);
+                            
+                            // ManageService.findOrCreate()을 사용하여 학교별로 정확한 관리번호 생성
+                            manage = manageService.findOrCreate(school, mn.manageCate, mn.year, mn.manageNum);
+                        } catch (Exception e) {
+                            log.warn("{}번째 행 관리번호 형식 오류: {}, {}", rowCount, manageNo, e.getMessage());
+                            // 특정 행의 관리번호 오류를 알림
+                            throw new IllegalArgumentException(rowCount + "번째 행의 관리번호 형식이 잘못되었습니다: " + manageNo);
+                        }
+                    }
+                    
+                    // 타입 정보 (세 번째 컬럼)
+                    String type = null;
+                    try {
+                        type = getCellString(row.getCell(2));
+                    } catch (Exception e) {
+                        // 타입 정보 처리 중 오류
+                    }
+                    
+                    // 유효한 타입이 없으면 구체적인 오류 메시지와 함께 예외 발생
+                    if (type == null || type.trim().isEmpty()) {
+                        throw new IllegalArgumentException(rowCount + "번째 행에 장비 타입이 없습니다. 장비 타입은 필수 값입니다.");
+                    }
+                    
+                    // 취급자 정보 (4번째와 5번째 컬럼)
+                    final String operatorPosition = getCellString(row.getCell(3)); // 직위
+                    final String operatorName = getCellString(row.getCell(4)); // 취급자
+                    Operator operator = null;
+                    
+                    try {
+                        if (operatorName != null && !operatorName.isEmpty() && 
+                            operatorPosition != null && !operatorPosition.isEmpty()) {
+                            operator = operatorService.findByNameAndPositionAndSchool(operatorName, operatorPosition, school)
+                                .orElseGet(() -> {
+                                    Operator op = new Operator();
+                                    op.setName(operatorName);
+                                    op.setPosition(operatorPosition);
+                                    op.setSchool(school);
+                                    return operatorService.saveOperator(op);
+                                });
+                        }
+                    } catch (Exception e) {
+                        // 취급자 정보는 선택사항이므로 오류가 있어도 진행
+                    }
+                    
+                    // 기타 정보
+                    String manufacturer = null;
+                    String modelName = null;
+                    LocalDate purchaseDate = null;
+                    String ipAddress = null;
+                    
+                    try {
+                        manufacturer = getCellString(row.getCell(5));
+                        modelName = getCellString(row.getCell(6));
+                        
+                        Cell dateCell = row.getCell(7); // 도입일자 컬럼
+                        
+                        if (dateCell != null && dateCell.getCellType() != CellType.BLANK) {
+                            purchaseDate = parseLocalDate(dateCell);
+                        }
+                        
+                        ipAddress = getCellString(row.getCell(8));
+                    } catch (Exception e) {
+                        // 선택적 정보이므로 진행
+                    }
+                    
+                    // 교실 처리 (필수 항목)
+                    String classroomName = null;
+                    Classroom classroom = null;
+                    
+                    try {
+                        classroomName = getCellString(row.getCell(9));
+                        
+                        if (classroomName == null || classroomName.isBlank()) {
+                            throw new IllegalArgumentException(rowCount + "번째 행에 설치장소(교실)가 지정되지 않았습니다. 설치장소는 필수 항목입니다.");
+                        }
+                        
+                        // 학교별 교실 검색으로 수정
+                        Optional<Classroom> existingClassroom = classroomService.findByRoomNameAndSchool(classroomName.trim(), school.getSchoolId());
+                        if (existingClassroom.isPresent()) {
+                            classroom = existingClassroom.get();
+                        } else {
+                            classroom = new Classroom();
+                            classroom.setRoomName(classroomName.trim());
+                            classroom.setSchool(school);
+                            classroom.setXCoordinate(0);
+                            classroom.setYCoordinate(0);
+                            classroom.setWidth(100);
+                            classroom.setHeight(100);
+                            classroom = classroomService.saveClassroom(classroom);
+                        }
+                    } catch (IllegalArgumentException e) {
+                        throw e; // 이미 구체적인 오류 메시지가 있는 예외는 그대로 던짐
+                    }
+                    
+                    // 기타 옵션 필드
+                    String purpose = getCellString(row.getCell(10));
+                    String setType = getCellString(row.getCell(11));
+                    String note = getCellString(row.getCell(12));
+                    
+                    // UID 카테고리 결정 로직
+                    if (uidInfo == null || uidInfo.trim().isEmpty()) {
+                        // UID 정보가 비어있을 경우 자동 생성
+                        if (type != null && !type.trim().isEmpty()) {
+                            if ("데스크톱".equals(type)) {
+                                // 데스크톱의 경우 manageCate에 따라 UID 카테고리 결정
+                                if (manage != null && manage.getManageCate() != null) {
+                                    String manageCate = manage.getManageCate();
+                                    switch (manageCate) {
+                                        case "업무":
+                                            uidCate = "DW";
+                                            break;
+                                        case "교육":
+                                            uidCate = "DE";
+                                            break;
+                                        case "기타":
+                                            uidCate = "DK";
+                                            break;
+                                        case "컴퓨터교육":
+                                            uidCate = "DC";
+                                            break;
+                                        case "학교구매":
+                                            uidCate = "DS";
+                                            break;
+                                        case "기증품":
+                                            uidCate = "DD";
+                                            break;
+                                        default:
+                                            uidCate = "DW"; // 기본값
+                                            break;
+                                    }
+                                } else {
+                                    uidCate = "DW"; // 관리번호가 없는 경우 기본값
+                                }
+                            } else {
+                                // 다른 장비 타입에 따라 UID 카테고리 결정
+                                switch (type) {
+                                    case "모니터":
+                                        uidCate = "MO";
+                                        break;
+                                    case "프린터":
+                                        uidCate = "PR";
+                                        break;
+                                    case "TV":
+                                        uidCate = "TV";
+                                        break;
+                                    case "전자칠판":
+                                        uidCate = "ID"; // IE에서 ID로 변경됨
+                                        break;
+                                    case "전자교탁":
+                                        uidCate = "ED";
+                                        break;
+                                    case "DID":
+                                        uidCate = "DI";
+                                        break;
+                                    case "태블릿":
+                                        uidCate = "TB";
+                                        break;
+                                    case "프로젝트":
+                                    case "프로젝터":
+                                        uidCate = "PJ";
+                                        break;
+                                    default:
+                                        uidCate = "ET"; // 기타 장비
+                                        break;
+                                }
+                            }
+                        } else {
+                            uidCate = "ET"; // 타입 정보가 없는 경우 기본값
+                        }
+                    } else {
+                        // UID 정보가 직접 입력된 경우 그대로 사용
+                        uidCate = uidInfo;
+                    }
+                    
+                    
+                    // Device 객체 생성 및 기본 정보 설정
+                    Device device = new Device();
+                    device.setType(type);
+                    device.setManufacturer(manufacturer);
+                    device.setModelName(modelName);
+                    device.setPurchaseDate(purchaseDate);
+                    device.setIpAddress(ipAddress);
+                    device.setPurpose(purpose);
+                    device.setSetType(setType);
+                    device.setNote(note);
+                    device.setUnused(false);
+                    device.setClassroom(classroom);
+                    device.setSchool(school);
+                    device.setManage(manage);
+                    device.setOperator(operator);
+                    
+                    // 디바이스 저장 전에 UID 설정 - 필수 데이터 확인
+                    if (uidCate != null && !uidCate.trim().isEmpty()) {
+                        devices.add(device);
+                    } else {
+                        log.warn("{}번째 행 UID 카테고리 누락으로 장비 무시", rowCount);
+                    }
+                } catch (Exception e) {
+                    log.error("{}번째 행 처리 중 예외 발생: {}", rowCount, e.getMessage(), e);
+                    throw new IllegalArgumentException(rowCount + "번째 행 처리 중 오류가 발생했습니다: " + e.getMessage());
+                }
+            }
+            
+            // 모든 디바이스 추출 후, UID 카테고리별로 그룹화하여 ID 번호 부여
+            Map<String, List<Device>> devicesByCate = devices.stream()
+                    .collect(Collectors.groupingBy(device -> {
+                        // Device에 설정된 UID 카테고리 얻기
+                        String type = device.getType();
+                        Manage manage = device.getManage();
+                        
+                        if ("데스크톱".equals(type)) {
+                            if (manage != null && manage.getManageCate() != null) {
+                                String manageCate = manage.getManageCate();
+                                switch (manageCate) {
+                                    case "업무": return "DW";
+                                    case "교육": return "DE";
+                                    case "기타": return "DK";
+                                    case "컴퓨터교육": return "DC";
+                                    case "학교구매": return "DS";
+                                    case "기증품": return "DD";
+                                    default: return "DW";
+                                }
+                            } else {
+                                return "DW";
+                            }
+                        } else {
+                            switch (type) {
+                                case "모니터": return "MO";
+                                case "프린터": return "PR";
+                                case "TV": return "TV";
+                                case "전자칠판": return "ID"; // IE에서 ID로 변경됨
+                                case "전자교탁": return "ED";
+                                case "DID": return "DI";
+                                case "태블릿": return "TB";
+                                case "프로젝트":
+                                case "프로젝터": return "PJ";
+                                default: return "ET";
+                            }
+                        }
+                    }));
+            
+            // 각 카테고리별로 ID 번호 부여하고 UID 생성
+            for (Map.Entry<String, List<Device>> entry : devicesByCate.entrySet()) {
+                String cate = entry.getKey();
+                List<Device> deviceList = entry.getValue();
+                
+                // 각 장비 처리
+                for (Device device : deviceList) {
+                    // 현재 연도의 뒤 두 자리 가져오기 (예: 2025 -> 25)
+                    int currentYear = LocalDate.now().getYear() % 100;
+                    
+                    // 제조일자가 있다면 해당 년도를 사용, 없으면 "xx" 사용
+                    String mfgYear = device.getPurchaseDate() != null ? 
+                            String.valueOf(device.getPurchaseDate().getYear() % 100) : 
+                            "xx";
+                    
+                    // 학교 PK를 2자리 문자열로 변환 (예: 2 -> "02")
+                    String schoolCode = String.format("%02d", school.getSchoolId());
+                    
+                    // 해당 카테고리, 학교, 제조년의 최대 ID 번호 조회
+                    Long lastNumber = uidService.getLastIdNumberBySchoolAndMfgYear(school, cate, mfgYear);
+                    
+                    // 새 ID 번호 계산
+                    Long idNumber = lastNumber + 1;
+                    
+                    // UID 생성 및 설정
+                    Uid uid = uidService.createUidWithMfgYear(cate, idNumber, mfgYear, school);
+                    // displayUid 자동 생성
+                    uid.generateDisplayUid();
+                    device.setUid(uid);
+                }
+            }
+            
+            // 최종 저장
+            deviceRepository.saveAll(devices);
+        }
+        
+        // 메서드 끝에 추가 (return 문 바로 앞에)
+        entityManager.flush();
+        entityManager.clear();
+    }
+
+    private String getCellString(Cell cell) {
+        if (cell == null) return null;
+        
+        try {
+            switch (cell.getCellType()) {
+                case STRING:
+                    return cell.getStringCellValue().trim();
+                case NUMERIC:
+                    if (DateUtil.isCellDateFormatted(cell)) {
+                        return cell.getLocalDateTimeCellValue().toLocalDate().toString();
+                    } else {
+                        // 숫자 값이 날짜일 가능성 체크 (Excel 날짜는 1부터 시작)
+                        double numValue = cell.getNumericCellValue();
+                        if (numValue > 1 && numValue < 100000) { // Excel 날짜 범위
+                            try {
+                                // Excel 날짜를 LocalDate로 변환
+                                java.util.Date date = DateUtil.getJavaDate(numValue);
+                                java.time.LocalDate localDate = date.toInstant()
+                                    .atZone(java.time.ZoneId.systemDefault())
+                                    .toLocalDate();
+                                return localDate.toString();
+                            } catch (Exception e) {
+                                log.warn("Excel date conversion failed: {}", e.getMessage());
+                            }
+                        }
+                        // 일반 숫자 처리
+                        if (numValue == Math.floor(numValue)) {
+                            return String.format("%.0f", numValue);
+                        } else {
+                            return String.valueOf(numValue);
+                        }
+                    }
+                case BOOLEAN:
+                    return String.valueOf(cell.getBooleanCellValue());
+                case FORMULA:
+                    try {
+                        // 엑셀 공식의 계산된 결과값을 가져옴
+                        CellType cachedFormulaResultType = cell.getCachedFormulaResultType();
+                        
+                        if (cachedFormulaResultType == CellType.STRING) {
+                            return cell.getStringCellValue().trim();
+                        } else if (cachedFormulaResultType == CellType.NUMERIC) {
+                            if (DateUtil.isCellDateFormatted(cell)) {
+                                return cell.getLocalDateTimeCellValue().toLocalDate().toString();
+                            } else {
+                                // 숫자 값이 날짜일 가능성 체크 (Excel 날짜는 1부터 시작)
+                                double numValue = cell.getNumericCellValue();
+                                if (numValue > 1 && numValue < 100000) { // Excel 날짜 범위
+                                    try {
+                                        // Excel 날짜를 LocalDate로 변환
+                                        java.util.Date date = DateUtil.getJavaDate(numValue);
+                                        java.time.LocalDate localDate = date.toInstant()
+                                            .atZone(java.time.ZoneId.systemDefault())
+                                            .toLocalDate();
+                                        return localDate.toString();
+                                    } catch (Exception e) {
+                                        log.warn("Excel date conversion failed: {}", e.getMessage());
+                                    }
+                                }
+                                // 일반 숫자 처리
+                                if (numValue == Math.floor(numValue)) {
+                                    return String.format("%.0f", numValue);
+                                } else {
+                                    return String.valueOf(numValue);
+                                }
+                            }
+                        } else if (cachedFormulaResultType == CellType.BOOLEAN) {
+                            return String.valueOf(cell.getBooleanCellValue());
+                        } else if (cachedFormulaResultType == CellType.BLANK) {
+                            return "";
+                        }
+                    } catch (Exception e) {
+                        return "";
+                    }
+                    break;
+                case BLANK:
+                    return "";
+                default:
+                    return "";
+            }
+        } catch (Exception e) {
+            return "";
+        }
+        return "";
+    }
+
+    private static class ManageNumber {
+        String manageCate;
+        Integer year;
+        Long manageNum;
+        ManageNumber(String manageCate, Integer year, Long manageNum) {
+            this.manageCate = manageCate;
+            this.year = year;
+            this.manageNum = manageNum;
+        }
+    }
+
+    private ManageNumber parseManageNo(String manageNo) {
+        String[] parts = manageNo.split("-");
+        if (parts.length == 3) {
+            return new ManageNumber(parts[0], Integer.parseInt(parts[1]), Long.parseLong(parts[2]));
+        } else if (parts.length == 2) {
+            return new ManageNumber(parts[0], null, Long.parseLong(parts[1]));
+        } else {
+            throw new IllegalArgumentException("관리번호 형식이 잘못되었습니다. 확인하여주세요. ('관리카테고리-일련번호' 또는 '관리카테고리-연도-일련번호' 형식이어야 합니다.)");
+        }
+    }
+
+    private LocalDate parseLocalDate(Cell cell) {
+        if (cell == null) {
+            return null;
+        }
+        
+        try {
+            // 1. Excel의 날짜 형식인 경우 직접 변환 (가장 우선)
+            if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+                return cell.getLocalDateTimeCellValue().toLocalDate();
+            }
+            
+            // 2. FORMULA 셀이면서 날짜 결과인 경우
+            if (cell.getCellType() == CellType.FORMULA) {
+                try {
+                    CellType cachedType = cell.getCachedFormulaResultType();
+                    if (cachedType == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+                        return cell.getLocalDateTimeCellValue().toLocalDate();
+                    }
+                } catch (Exception e) {
+                    // 공식 셀 날짜 처리 중 오류 무시
+                }
+            }
+            
+            // 3. 문자열로 변환하여 처리
+            String value = getCellString(cell);
+            if (value == null || value.isBlank()) return null;
+            
+            // 문자열 전처리 - 다양한 구분자와 형식 정규화
+            value = value.trim()
+                    .replace("년", "-").replace("월", "-").replace("일", "")
+                    .replace(".", "-").replace("/", "-").replace(" ", "")
+                    .replaceAll("--", "-").replaceAll("-$", "");
+            
+            // 다양한 날짜 형식 처리
+            if (value.matches("\\d{4}-\\d{1,2}-\\d{1,2}")) {
+                // YYYY-MM-DD 형식
+                return LocalDate.parse(value, DateTimeFormatter.ofPattern("yyyy-M-d"));
+            } else if (value.matches("\\d{4}-\\d{1,2}")) {
+                // YYYY-MM 형식 (일은 1일로 설정)
+                return LocalDate.parse(value + "-01", DateTimeFormatter.ofPattern("yyyy-M-d"));
+            } else if (value.matches("\\d{4}")) {
+                // YYYY 형식 (월과 일은 1월 1일로 설정)
+                return LocalDate.parse(value + "-01-01", DateTimeFormatter.ofPattern("yyyy-M-d"));
+            } else if (value.matches("\\d{2}-\\d{1,2}")) {
+                // YY-MM 형식 (현재 세기에 맞춰 연도 해석, 일은 1일로 설정)
+                int currentCentury = LocalDate.now().getYear() / 100 * 100;
+                int year = Integer.parseInt(value.split("-")[0]);
+                if (year > LocalDate.now().getYear() % 100) {
+                    // 입력된 연도가 현재 연도의 뒤 두자리보다 크면 이전 세기로 해석
+                    currentCentury -= 100;
+                }
+                return LocalDate.parse((currentCentury + year) + "-" + value.split("-")[1] + "-01", 
+                        DateTimeFormatter.ofPattern("yyyy-M-d"));
+            } else if (value.matches("\\d{2}")) {
+                // YY 형식 (현재 세기에 맞춰 연도 해석, 월과 일은 1월 1일로 설정)
+                int currentCentury = LocalDate.now().getYear() / 100 * 100;
+                int year = Integer.parseInt(value);
+                if (year > LocalDate.now().getYear() % 100) {
+                    // 입력된 연도가 현재 연도의 뒤 두자리보다 크면 이전 세기로 해석
+                    currentCentury -= 100;
+                }
+                return LocalDate.parse((currentCentury + year) + "-01-01", 
+                        DateTimeFormatter.ofPattern("yyyy-M-d"));
+            }
+            
+            // 4. 추가 날짜 형식 처리 (MM/DD/YYYY, DD/MM/YYYY 등)
+            if (value.matches("\\d{1,2}/\\d{1,2}/\\d{4}")) {
+                // MM/DD/YYYY 또는 DD/MM/YYYY 형식
+                String[] parts = value.split("/");
+                if (parts.length == 3) {
+                    int first = Integer.parseInt(parts[0]);
+                    int second = Integer.parseInt(parts[1]);
+                    int year = Integer.parseInt(parts[2]);
+                    
+                    // 첫 번째 숫자가 12 이하면 월로 해석, 아니면 일로 해석
+                    if (first <= 12) {
+                        // MM/DD/YYYY 형식
+                        return LocalDate.of(year, first, second);
+                    } else {
+                        // DD/MM/YYYY 형식
+                        return LocalDate.of(year, second, first);
+                    }
+                }
+            }
+            
+        } catch (DateTimeParseException | NumberFormatException e) {
+            // 날짜 파싱 실패 시 null 반환 (오류 메시지 없이 계속 진행)
+        } catch (Exception e) {
+            log.error("날짜 처리 중 예상치 못한 오류: {}", e.getMessage(), e);
+        }
+        
+        // 어떤 형식으로도 파싱할 수 없는 경우 null 반환 (오류 발생 없이 빈 값으로 처리)
+        return null;
+    }
+
+    /**
+     * 장비에 Uid를 설정합니다.
+     * @param device 장비 객체
+     * @param cate Uid 카테고리
+     * @return 업데이트된 장비 객체
+     */
+    public Device setDeviceUid(Device device, String cate) {
+        
+        // 장비의 학교 정보 가져오기
+        School school = device.getSchool();
+        
+        // 현재 연도의 뒤 두 자리 가져오기 (예: 2025 -> 25)
+        int currentYear = LocalDate.now().getYear() % 100;
+        
+        // 제조일자가 있다면 해당 년도를 사용, 없으면 "xx" 사용
+        String mfgYear = device.getPurchaseDate() != null ? 
+                String.valueOf(device.getPurchaseDate().getYear() % 100) : 
+                "xx";
+        
+        Uid uid;
+        
+        if (school != null) {
+            // 학교 정보가 있으면 학교별로 Uid 생성
+            uid = uidService.createNextUidWithMfgYear(cate, mfgYear, school);
+        } else {
+            // 학교 정보가 없는 경우는 기존 방식대로 처리
+            uid = uidService.createNextUid(cate);
+        }
+        
+        device.setUid(uid);
+        return device;
+    }
+    
+    /**
+     * 장비의 Uid를 특정 값으로 설정합니다.
+     * @param device 장비 객체
+     * @param cate Uid 카테고리
+     * @param idNumber Uid 번호
+     * @return 업데이트된 장비 객체
+     */
+    public Device setDeviceUidWithNumber(Device device, String cate, Long idNumber) {
+        
+        // 장비의 학교 정보 가져오기
+        School school = device.getSchool();
+        
+        // 현재 연도의 뒤 두 자리 가져오기 (예: 2025 -> 25)
+        int currentYear = LocalDate.now().getYear() % 100;
+        
+        // 제조일자가 있다면 해당 년도를 사용, 없으면 "xx" 사용
+        String mfgYear = device.getPurchaseDate() != null ? 
+                String.valueOf(device.getPurchaseDate().getYear() % 100) : 
+                "xx";
+        
+        Uid uid;
+        
+        if (school != null) {
+            // 학교별로 Uid 조회 또는 생성
+            uid = uidService.findBySchoolAndCateAndMfgYearAndIdNumber(school, cate, mfgYear, idNumber)
+                    .orElseGet(() -> uidService.createUidWithMfgYear(cate, idNumber, mfgYear, school));
+        } else {
+            // 학교 정보가 없으면 기존 방식대로 처리
+            uid = uidService.getUidByCateAndIdNumber(cate, idNumber)
+                    .orElseGet(() -> uidService.createUid(cate, idNumber));
+        }
+        
+        // displayUid 자동 생성
+        uid.generateDisplayUid();
+        device.setUid(uid);
+        return device;
+    }
+
+    // 빈 행 여부 체크
+    private boolean isEmptyRow(Row row) {
+        // 최소한 타입(3번째 컬럼)은 있어야 함
+        Cell typeCell = row.getCell(2);
+        if (typeCell == null) return true;
+        
+        String typeValue = getCellString(typeCell);
+        if (typeValue == null || typeValue.trim().isEmpty()) return true;
+        
+        // 최소한 하나의 다른 컬럼에 데이터가 있어야 함
+        boolean hasOtherData = false;
+        for (int i = 0; i <= 12; i++) {
+            if (i == 2) continue; // 타입 컬럼은 이미 체크함
+            
+            Cell cell = row.getCell(i);
+            if (cell != null) {
+                String value = getCellString(cell);
+                if (value != null && !value.trim().isEmpty()) {
+                    hasOtherData = true;
+                    break; // 데이터가 있는 컬럼을 발견
+                }
+            }
+        }
+        
+        // 타입은 있지만 다른 모든 컬럼이 비어있으면 빈 행으로 간주
+        return !hasOtherData;
+    }
+
+    /**
+     * 필터링된 장비 목록을 가져오는 메서드
+     * @param schoolId 학교 ID (필터링할 경우)
+     * @param type 장비 유형 (필터링할 경우)
+     * @param classroomId 교실 ID (필터링할 경우)
+     * @return 필터링된 장비 목록
+     */
+    public List<Device> findFiltered(Long schoolId, String type, Long classroomId) {
+        if (schoolId != null && type != null && !type.isEmpty() && classroomId != null) {
+            return findBySchoolAndTypeAndClassroom(schoolId, type, classroomId);
+        } else if (schoolId != null && type != null && !type.isEmpty()) {
+            return findBySchoolAndType(schoolId, type);
+        } else if (schoolId != null && classroomId != null) {
+            return findBySchoolAndClassroom(schoolId, classroomId);
+        } else if (schoolId != null) {
+            return findBySchool(schoolId);
+        } else if (type != null && !type.isEmpty()) {
+            return findByType(type);
+        } else if (classroomId != null) {
+            return findByClassroom(classroomId);
+        } else {
+            return findAll();
+        }
+    }
+
+    public List<Device> findDevicesBySchool(School school) {
+        return deviceRepository.findBySchool(school);
+    }
+
+    // 통계용 메서드들
+    public long countAllDevices() {
+        return deviceRepository.count();
+    }
+    
+    public long countActiveDevices() {
+        return deviceRepository.countByUnusedFalseOrUnusedIsNull();
+    }
+
+    public List<Device> findByClassroomName(String classroomName) {
+        return deviceRepository.findByClassroomRoomName(classroomName);
+    }
+
+    public List<Device> findByClassroomNameAndType(String classroomName, String type) {
+        return deviceRepository.findByClassroomRoomNameAndType(classroomName, type);
+    }
+    
+    /**
+     * 검색 키워드로 장비 검색 (테이블에 표시된 모든 컬럼 검색 가능)
+     */
+    public List<Device> searchDevices(Long schoolId, String type, Long classroomId, String searchKeyword) {
+        List<Device> devices = findFiltered(schoolId, type, classroomId);
+        
+        if (searchKeyword == null || searchKeyword.trim().isEmpty()) {
+            return devices;
+        }
+        
+        String keyword = searchKeyword.trim().toLowerCase();
+        
+        return devices.stream()
+            .filter(device -> {
+                // 학교명 검색
+                if (device.getSchool() != null && device.getSchool().getSchoolName() != null && 
+                    device.getSchool().getSchoolName().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 고유번호 검색
+                if (device.getUid() != null && device.getUid().getDisplayUid() != null) {
+                    if (device.getUid().getDisplayUid().toLowerCase().contains(keyword)) {
+                        return true;
+                    }
+                }
+                
+                // 관리번호 검색
+                if (device.getManage() != null && device.getManage().getDisplayId() != null) {
+                    if (device.getManage().getDisplayId().toLowerCase().contains(keyword)) {
+                        return true;
+                    }
+                }
+                
+                // 유형 검색
+                if (device.getType() != null && 
+                    device.getType().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 직위 검색
+                if (device.getOperator() != null && device.getOperator().getPosition() != null && 
+                    device.getOperator().getPosition().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 담당자 검색
+                if (device.getOperator() != null && device.getOperator().getName() != null && 
+                    device.getOperator().getName().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 제조사 검색
+                if (device.getManufacturer() != null && 
+                    device.getManufacturer().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 모델명 검색
+                if (device.getModelName() != null && 
+                    device.getModelName().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 구매일자 검색 (년월 형식으로 검색)
+                if (device.getPurchaseDate() != null) {
+                    String purchaseDateStr = device.getPurchaseDate().format(
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy년 MM월"));
+                    if (purchaseDateStr.toLowerCase().contains(keyword)) {
+                        return true;
+                    }
+                }
+                
+                // IP주소 검색
+                if (device.getIpAddress() != null && 
+                    device.getIpAddress().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 교실명 검색
+                if (device.getClassroom() != null && device.getClassroom().getRoomName() != null && 
+                    device.getClassroom().getRoomName().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 용도 검색
+                if (device.getPurpose() != null && 
+                    device.getPurpose().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 세트분류 검색
+                if (device.getSetType() != null && 
+                    device.getSetType().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 비고 검색
+                if (device.getNote() != null && 
+                    device.getNote().toLowerCase().contains(keyword)) {
+                    return true;
+                }
+                
+                // 불용 검색 (Y/N)
+                if (device.getUnused() != null) {
+                    String unusedStr = device.getUnused() ? "y" : "n";
+                    if (unusedStr.contains(keyword)) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            })
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * 검색 키워드를 HTML 하이라이트 태그로 감싸기
+     */
+    public String highlightSearchKeyword(String text, String searchKeyword) {
+        if (text == null || searchKeyword == null || searchKeyword.trim().isEmpty()) {
+            return text;
+        }
+        
+        String cleanKeyword = searchKeyword.trim();
+        if (cleanKeyword.isEmpty()) {
+            return text;
+        }
+        
+        // 대소문자 구분 없이 검색 키워드 강조
+        String regex = "(?i)(" + java.util.regex.Pattern.quote(cleanKeyword) + ")";
+        return text.replaceAll(regex, "<mark class='search-highlight'>$1</mark>");
+    }
+    
+    /**
+     * 특정 교실 이름들에 있는 모든 장비 조회
+     */
+    public List<Device> findDevicesByClassroomNames(Set<String> classroomNames, Long schoolId, String type) {
+        if (classroomNames == null || classroomNames.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        List<Device> devices;
+        
+        if (schoolId != null && type != null && !type.trim().isEmpty()) {
+            // 학교와 타입이 모두 지정된 경우
+            devices = deviceRepository.findByClassroomRoomNameInAndSchoolSchoolIdAndType(
+                new ArrayList<>(classroomNames), schoolId, type);
+        } else if (schoolId != null) {
+            // 학교만 지정된 경우
+            devices = deviceRepository.findByClassroomRoomNameInAndSchoolSchoolId(
+                new ArrayList<>(classroomNames), schoolId);
+        } else {
+            // 교실 이름만으로 검색
+            devices = deviceRepository.findByClassroomRoomNameIn(new ArrayList<>(classroomNames));
+        }
+        
+        return devices;
+    }
+    
+    /**
+     * 담당자별 장비 조회 (학교와 담당자로 필터링)
+     */
+    public List<Device> findDevicesByOperator(Long schoolId, Long operatorId) {
+        School school = schoolRepository.findById(schoolId)
+            .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        
+        Operator operator = operatorService.getOperatorById(operatorId)
+            .orElseThrow(() -> new RuntimeException("Operator not found with id: " + operatorId));
+        
+        return deviceRepository.findBySchoolAndOperator(school, operator);
+    }
+    
+    /**
+     * 담당자 이름으로 장비 조회 (학교와 담당자 이름으로 필터링)
+     */
+    public List<Device> findDevicesByOperatorName(Long schoolId, String operatorName) {
+        School school = schoolRepository.findById(schoolId)
+            .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        
+        if (operatorName == null || operatorName.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // 해당 학교에서 해당 이름을 가진 모든 담당자 찾기
+        List<Operator> operators = operatorService.findBySchoolAndName(school, operatorName.trim());
+        
+        if (operators.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // 각 담당자에 해당하는 장비들을 모두 조회
+        List<Device> allDevices = new ArrayList<>();
+        for (Operator operator : operators) {
+            List<Device> devices = deviceRepository.findBySchoolAndOperator(school, operator);
+            allDevices.addAll(devices);
+        }
+        
+        return allDevices;
+    }
+    
+    /**
+     * 담당자 일괄 수정
+     */
+    @Transactional
+    public void updateDevicesOperator(List<Long> deviceIds, String newOperatorName, String newOperatorPosition, User modifiedBy) {
+        if (deviceIds == null || deviceIds.isEmpty()) {
+            return;
+        }
+        
+        // 새 담당자 정보 처리
+        Operator newOperator = null;
+        if (newOperatorName != null && !newOperatorName.trim().isEmpty()) {
+            // 첫 번째 장비의 학교 정보 가져오기
+            Device firstDevice = deviceRepository.findById(deviceIds.get(0))
+                .orElseThrow(() -> new RuntimeException("Device not found"));
+            School school = firstDevice.getSchool();
+            
+            String trimmedName = newOperatorName.trim();
+            String trimmedPosition = (newOperatorPosition != null) ? newOperatorPosition.trim() : null;
+            
+            if (trimmedPosition != null && !trimmedPosition.isEmpty()) {
+                // 담당자와 직위 둘 다 입력된 경우
+                newOperator = operatorService.findByNameAndPositionAndSchool(trimmedName, trimmedPosition, school)
+                    .orElseGet(() -> {
+                        Operator op = new Operator();
+                        op.setName(trimmedName);
+                        op.setPosition(trimmedPosition);
+                        op.setSchool(school);
+                        return operatorService.saveOperator(op);
+                    });
+            } else {
+                // 담당자만 입력된 경우 (직위는 null)
+                newOperator = operatorService.findByNameAndSchoolAndPositionIsNull(trimmedName, school)
+                    .orElseGet(() -> {
+                        Operator op = new Operator();
+                        op.setName(trimmedName);
+                        op.setPosition(null);
+                        op.setSchool(school);
+                        return operatorService.saveOperator(op);
+                    });
+            }
+        }
+        
+        // 각 장비의 담당자 업데이트
+        for (Long deviceId : deviceIds) {
+            Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new RuntimeException("Device not found with id: " + deviceId));
+            
+            // 이전 담당자 정보
+            String oldOperatorName = device.getOperator() != null ? device.getOperator().getName() : "";
+            String oldOperatorPosition = device.getOperator() != null && device.getOperator().getPosition() != null 
+                ? device.getOperator().getPosition() : "";
+            String oldOperatorInfo = oldOperatorName + (oldOperatorPosition.isEmpty() ? "" : " (" + oldOperatorPosition + ")");
+            
+            // 새 담당자 정보
+            String newOperatorNameStr = newOperator != null ? newOperator.getName() : "";
+            String newOperatorPositionStr = newOperator != null && newOperator.getPosition() != null 
+                ? newOperator.getPosition() : "";
+            String newOperatorInfo = newOperatorNameStr + (newOperatorPositionStr.isEmpty() ? "" : " (" + newOperatorPositionStr + ")");
+            
+            // 담당자 정보 변경 시 히스토리 저장
+            if (!oldOperatorInfo.equals(newOperatorInfo)) {
+                deviceHistoryService.saveDeviceHistory(device, "operator", oldOperatorInfo, newOperatorInfo, modifiedBy);
+            }
+            
+            device.setOperator(newOperator);
+            deviceRepository.save(device);
+        }
+    }
+} 
