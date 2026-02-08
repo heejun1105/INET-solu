@@ -23,24 +23,25 @@ RUN apk add --no-cache tzdata fontconfig font-dejavu freetype wget && \
     fc-cache -fv && \
     apk del tzdata
 
-# 빌드된 JAR 복사
-COPY --from=build /app/build/libs/*.jar app.jar
+# 빌드된 JAR 복사 (컨테이너 내 경로: /app/app.jar)
+COPY --from=build /app/build/libs/*.jar /app/app.jar
 
 RUN mkdir -p /app/logs
 
-# Railway는 PORT 환경변수로 포트 지정. 없으면 8082 사용
+# Railway는 PORT 환경변수로 포트 지정
 ENV PORT=8082
 EXPOSE 8082
 
-# 프로필/DB 등은 Railway 대시보드에서 환경변수로 설정
 ENV SPRING_PROFILES_ACTIVE=prod
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider "http://localhost:${PORT}/login" || exit 1
 
-ENTRYPOINT ["sh", "-c", "java \
+# 주의: Railway에서 "Start Command"를 비워 두어야 이 ENTRYPOINT가 사용됩니다.
+# build/libs/INET-0.0.1-SNAPSHOT.jar 는 이 이미지에 없음 (JAR는 /app/app.jar 로만 존재)
+ENTRYPOINT ["sh", "-c", "exec java \
   -Djava.security.egd=file:/dev/./urandom \
   -Dfile.encoding=UTF-8 \
   -Xmx512m \
   -Xms256m \
-  -jar app.jar"]
+  -jar /app/app.jar"]

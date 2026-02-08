@@ -32,8 +32,11 @@
 3. **Builder** 를 **Dockerfile** 로 변경  
    - 기본값: `Nixpacks` 또는 `Builder: Auto`  
    - 변경: **Dockerfile** 선택
-4. **Dockerfile Path** 가 비어 있으면 그대로 두기 (기본값: `Dockerfile` = 프로젝트 루트의 `Dockerfile`)
-5. **저장** 또는 **Deploy** 로 재배포
+4. **Dockerfile Path** 가 비어 있으면 그대로 두기 (기본값: `Dockerfile`)
+5. **Start Command** / **Custom Start Command** / **Run Command** 가 있으면 **반드시 비우기**  
+   - Nixpacks 사용 시 Railway가 `java -jar build/libs/INET-0.0.1-SNAPSHOT.jar` 같은 명령을 넣어 둔 경우가 있음  
+   - Dockerfile 사용 시 JAR는 **/app/app.jar** 에만 있으므로, Start Command를 비워 두어 Dockerfile의 ENTRYPOINT(`java -jar /app/app.jar`)가 실행되도록 해야 함
+6. **저장** 후 **Redeploy**
 
 ### 2-3. (선택) 루트 디렉터리
 
@@ -70,6 +73,11 @@ Docker 이미지 안에서는 **DB 등은 환경 변수**로 넘깁니다.
 ---
 
 ## 5. 문제 해결
+
+- **"Unable to access jarfile build/libs/INET-0.0.1-SNAPSHOT.jar"**  
+  - Docker 이미지 안에는 `build/libs/` 경로가 없고, JAR는 **/app/app.jar** 에만 있습니다.  
+  - **Settings → Deploy** (또는 **Build**) 에서 **Start Command** / **Custom Run Command** 를 찾아 **비우기** (삭제).  
+  - 저장 후 **Redeploy** 하면 Dockerfile의 ENTRYPOINT(`java -jar /app/app.jar`)가 사용됩니다.
 
 - **빌드 실패**  
   - 로그에서 `gradle clean bootJar` 단계 오류 확인  
