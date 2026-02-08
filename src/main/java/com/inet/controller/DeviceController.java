@@ -1143,6 +1143,7 @@ public class DeviceController {
                 return;
             }
         }
+        try {
         List<Device> devices;
         
         if (schoolId != null && type != null && !type.isEmpty() && classroomId != null) {
@@ -1280,17 +1281,19 @@ public class DeviceController {
         Map<Long, String> inspectionStatuses = null;
         // TODO: 세션에서 검사 데이터를 가져오는 로직 추가
         
-        try {
-            deviceService.exportToExcel(sortedDevices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
-        } catch (Exception e) {
-            log.error("장비목록 엑셀 다운로드 실패 - schoolId={}, type={}, classroomId={}", schoolId, type, classroomId, e);
+        // 응답 커밋 전에 메모리에 생성해, 실패 시 오류 메시지를 쓸 수 있게 함
+        ByteArrayOutputStream excelBuffer = new ByteArrayOutputStream();
+            deviceService.exportToExcel(sortedDevices, excelBuffer, inspectionStatuses, filteredSchoolName);
+        response.getOutputStream().write(excelBuffer.toByteArray());
+        } catch (Throwable t) {
+            log.error("장비목록 엑셀 다운로드 실패 - schoolId={}, type={}, classroomId={}", schoolId, type, classroomId, t);
             if (!response.isCommitted()) {
                 try {
                     response.resetBuffer();
                     response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                     response.setContentType("text/plain;charset=UTF-8");
                     response.setCharacterEncoding("UTF-8");
-                    String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    String msg = (t.getMessage() != null && !t.getMessage().isEmpty()) ? t.getMessage() : t.getClass().getSimpleName();
                     response.getWriter().write("엑셀 생성 중 오류: " + msg);
                 } catch (IOException ioe) {
                     log.warn("오류 응답 작성 실패", ioe);
@@ -1367,6 +1370,7 @@ public class DeviceController {
             log.info("검사 데이터가 비어있음. 일반 엑셀 다운로드로 진행");
         }
         
+        try {
         // 장비 목록 조회
         List<Device> devices;
         if (schoolId != null && type != null && !type.isEmpty() && classroomId != null) {
@@ -1420,17 +1424,18 @@ public class DeviceController {
         response.setHeader("Content-Disposition", "attachment; filename=devices_with_inspection.xlsx");
         
         String filteredSchoolName = (schoolId != null) ? schoolService.getSchoolById(schoolId).map(School::getSchoolName).orElse(null) : null;
-        try {
-            deviceService.exportToExcel(devices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
-        } catch (Exception e) {
-            log.error("장비목록 검사 엑셀 다운로드 실패 - schoolId={}, type={}, classroomId={}", schoolId, type, classroomId, e);
+        ByteArrayOutputStream excelBuffer = new ByteArrayOutputStream();
+            deviceService.exportToExcel(devices, excelBuffer, inspectionStatuses, filteredSchoolName);
+        response.getOutputStream().write(excelBuffer.toByteArray());
+        } catch (Throwable t) {
+            log.error("장비목록 검사 엑셀 다운로드 실패 - schoolId={}, type={}, classroomId={}", schoolId, type, classroomId, t);
             if (!response.isCommitted()) {
                 try {
                     response.resetBuffer();
                     response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                     response.setContentType("text/plain;charset=UTF-8");
                     response.setCharacterEncoding("UTF-8");
-                    String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    String msg = (t.getMessage() != null && !t.getMessage().isEmpty()) ? t.getMessage() : t.getClass().getSimpleName();
                     response.getWriter().write("엑셀 생성 중 오류: " + msg);
                 } catch (IOException ioe) {
                     log.warn("오류 응답 작성 실패", ioe);
