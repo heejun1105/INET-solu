@@ -1280,7 +1280,23 @@ public class DeviceController {
         Map<Long, String> inspectionStatuses = null;
         // TODO: 세션에서 검사 데이터를 가져오는 로직 추가
         
-        deviceService.exportToExcel(sortedDevices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
+        try {
+            deviceService.exportToExcel(sortedDevices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
+        } catch (Exception e) {
+            log.error("장비목록 엑셀 다운로드 실패 - schoolId={}, type={}, classroomId={}", schoolId, type, classroomId, e);
+            if (!response.isCommitted()) {
+                try {
+                    response.resetBuffer();
+                    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                    response.setContentType("text/plain;charset=UTF-8");
+                    response.setCharacterEncoding("UTF-8");
+                    String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    response.getWriter().write("엑셀 생성 중 오류: " + msg);
+                } catch (IOException ioe) {
+                    log.warn("오류 응답 작성 실패", ioe);
+                }
+            }
+        }
     }
     
     // 검사 데이터를 포함한 엑셀 다운로드
@@ -1404,7 +1420,23 @@ public class DeviceController {
         response.setHeader("Content-Disposition", "attachment; filename=devices_with_inspection.xlsx");
         
         String filteredSchoolName = (schoolId != null) ? schoolService.getSchoolById(schoolId).map(School::getSchoolName).orElse(null) : null;
-        deviceService.exportToExcel(devices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
+        try {
+            deviceService.exportToExcel(devices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
+        } catch (Exception e) {
+            log.error("장비목록 검사 엑셀 다운로드 실패 - schoolId={}, type={}, classroomId={}", schoolId, type, classroomId, e);
+            if (!response.isCommitted()) {
+                try {
+                    response.resetBuffer();
+                    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                    response.setContentType("text/plain;charset=UTF-8");
+                    response.setCharacterEncoding("UTF-8");
+                    String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    response.getWriter().write("엑셀 생성 중 오류: " + msg);
+                } catch (IOException ioe) {
+                    log.warn("오류 응답 작성 실패", ioe);
+                }
+            }
+        }
     }
 
     @GetMapping("/map")
