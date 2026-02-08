@@ -2616,6 +2616,19 @@
             return '/device/excel' + (params.length ? '?' + params.join('&') : '');
         }
         
+        // 엑셀 실패 시 서버 응답을 콘솔에 남기고 알림용 메시지 반환 (원인 파악용)
+        function formatDeviceExcelError(status, text, requestUrl) {
+            console.error('[장비목록 엑셀] 실패 URL:', requestUrl);
+            console.error('[장비목록 엑셀] HTTP 상태:', status);
+            console.error('[장비목록 엑셀] 서버 응답 본문:', text);
+            if (!text || !text.trim()) return '엑셀 다운로드 실패 (HTTP ' + status + ')';
+            var t = text.trim();
+            if (t.length > 400 || t.indexOf('<') === 0 || t.toLowerCase().indexOf('<!doctype') === 0) {
+                return '엑셀 다운로드 실패 (HTTP ' + status + '). 원인은 개발자 도구 콘솔을 확인하세요.';
+            }
+            return t;
+        }
+        
         // 엑셀 다운로드 (검사 데이터 포함)
         function downloadExcelWithInspection(event) {
             if (event) {
@@ -2675,15 +2688,15 @@
                                 formData.append('classroomId', classroomIdValue);
                                 
                                 // fetch를 사용하여 엑셀 다운로드
-                                fetch('/device/excel/inspection', {
+                                var inspectionExcelUrl = '/device/excel/inspection';
+                                fetch(inspectionExcelUrl, {
                                     method: 'POST',
                                     body: formData
                                 })
                                 .then(response => {
                                     if (!response.ok) {
                                         return response.text().then(text => {
-                                            console.error('장비목록 엑셀 다운로드 실패:', response.status, text);
-                                            throw new Error(text && text.trim() ? text : ('엑셀 다운로드 실패 (HTTP ' + response.status + ')'));
+                                            throw new Error(formatDeviceExcelError(response.status, text, inspectionExcelUrl));
                                         });
                                     }
                                     return response.blob();
@@ -2728,13 +2741,12 @@
                                     type: typeSelectElement ? typeSelectElement.value : '',
                                     classroomId: classroomSelectElement ? classroomSelectElement.value : ''
                                 });
-                                
+                                console.log('[장비목록 엑셀] 요청 URL:', downloadUrl);
                                 fetch(downloadUrl)
                                     .then(response => {
                                         if (!response.ok) {
                                             return response.text().then(text => {
-                                                console.error('장비목록 엑셀 다운로드 실패:', response.status, text);
-                                                throw new Error(text && text.trim() ? text : ('엑셀 다운로드 실패 (HTTP ' + response.status + ')'));
+                                                throw new Error(formatDeviceExcelError(response.status, text, downloadUrl));
                                             });
                                         }
                                         return response.blob();
@@ -2776,13 +2788,12 @@
                             const excelBtn = document.getElementById('excelDownloadBtn');
                             const loadingOverlay = document.getElementById('excelLoadingOverlay');
                             const downloadUrl = getExcelDownloadUrl();
-                            
+                            console.log('[장비목록 엑셀] 요청 URL:', downloadUrl);
                             fetch(downloadUrl)
                                 .then(response => {
                                     if (!response.ok) {
                                         return response.text().then(text => {
-                                            console.error('장비목록 엑셀 다운로드 실패:', response.status, text);
-                                            throw new Error(text && text.trim() ? text : ('엑셀 다운로드 실패 (HTTP ' + response.status + ')'));
+                                            throw new Error(formatDeviceExcelError(response.status, text, downloadUrl));
                                         });
                                     }
                                     return response.blob();
@@ -2824,13 +2835,12 @@
                     const excelBtn = document.getElementById('excelDownloadBtn');
                     const loadingOverlay = document.getElementById('excelLoadingOverlay');
                     const downloadUrl = getExcelDownloadUrl();
-                    
+                    console.log('[장비목록 엑셀] 요청 URL:', downloadUrl);
                     fetch(downloadUrl)
                         .then(response => {
                             if (!response.ok) {
                                 return response.text().then(text => {
-                                    console.error('장비목록 엑셀 다운로드 실패:', response.status, text);
-                                    throw new Error(text && text.trim() ? text : ('엑셀 다운로드 실패 (HTTP ' + response.status + ')'));
+                                    throw new Error(formatDeviceExcelError(response.status, text, downloadUrl));
                                 });
                             }
                             return response.blob();
@@ -2870,13 +2880,12 @@
                 const excelBtn = document.getElementById('excelDownloadBtn');
                 const loadingOverlay = document.getElementById('excelLoadingOverlay');
                 const downloadUrl = getExcelDownloadUrl();
-                
+                console.log('[장비목록 엑셀] 요청 URL:', downloadUrl);
                 fetch(downloadUrl)
                     .then(response => {
                         if (!response.ok) {
                             return response.text().then(text => {
-                                console.error('장비목록 엑셀 다운로드 실패:', response.status, text);
-                                throw new Error(text && text.trim() ? text : ('엑셀 다운로드 실패 (HTTP ' + response.status + ')'));
+                                throw new Error(formatDeviceExcelError(response.status, text, downloadUrl));
                             });
                         }
                         return response.blob();
