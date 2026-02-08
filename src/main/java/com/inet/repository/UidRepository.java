@@ -44,6 +44,9 @@ public interface UidRepository extends JpaRepository<Uid, Long> {
     // 학교, 카테고리, 제조년, ID 번호로 Uid 검색
     Optional<Uid> findBySchoolAndCateAndMfgYearAndIdNumber(School school, String cate, String mfgYear, Long idNumber);
 
+    // 학교와 표시 고유번호(display_uid)로 Uid 검색
+    Optional<Uid> findBySchoolAndDisplayUid(School school, String displayUid);
+
     @Modifying
     @Query("DELETE FROM Uid u WHERE u.school.schoolId = :schoolId")
     int deleteBySchoolSchoolId(Long schoolId);

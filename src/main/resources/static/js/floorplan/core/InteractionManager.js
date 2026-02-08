@@ -697,6 +697,81 @@ export default class InteractionManager {
         }
     }
     
+    // ===== 인접 스냅 (자석 정렬) =====
+    
+    /** 인접 스냅 감지 거리 (캔버스 px). 이 거리 안이면 가장자리가 맞닿도록 스냅 */
+    static get SNAP_EDGE_DISTANCE() { return 7; }
+    
+    /**
+     * 교실/건물/사각형/기타공간 등 스냅 대상이 되는 요소의 rect 목록 반환 (같은 페이지, 제외 ID 적용)
+     * @param {string[]} excludeIds - 제외할 요소 id
+     * @returns {{ x: number, y: number, width: number, height: number }[]}
+     */
+    getSnappableRects(excludeIds) {
+        const app = window.floorPlanApp;
+        const currentPage = app?.currentPage ?? this.core.state?.currentPage ?? 1;
+        const excludeSet = new Set(excludeIds || []);
+        const snappable = [];
+        for (const el of this.core.state.elements) {
+            const page = el.pageNumber ?? 1;
+            if (page !== currentPage || excludeSet.has(el.id)) continue;
+            const type = el.elementType;
+            if (type === 'room' || type === 'building' || type === 'other_space' ||
+                type === 'elevator' || type === 'stairs' || type === 'toilet' || type === 'entrance') {
+                snappable.push({
+                    x: el.xCoordinate ?? 0,
+                    y: el.yCoordinate ?? 0,
+                    width: el.width ?? 0,
+                    height: el.height ?? 0
+                });
+            } else if (type === 'shape' && el.shapeType !== 'line' && el.shapeType !== 'dashed-line') {
+                snappable.push({
+                    x: el.xCoordinate ?? 0,
+                    y: el.yCoordinate ?? 0,
+                    width: el.width ?? 0,
+                    height: el.height ?? 0
+                });
+            }
+        }
+        return snappable;
+    }
+    
+    /**
+     * 한 사각형을 다른 사각형들에 대해 인접 스냅한 좌상단 (x, y) 반환
+     * @param {{ x: number, y: number, width: number, height: number }} rect
+     * @param {{ x: number, y: number, width: number, height: number }[]} otherRects
+     * @param {number} distance
+     * @returns {{ x: number, y: number }}
+     */
+    snapRectToRects(rect, otherRects, distance) {
+        let x = rect.x;
+        let y = rect.y;
+        const w = rect.width;
+        const h = rect.height;
+        const right = x + w;
+        const bottom = y + h;
+        const dist = distance ?? InteractionManager.SNAP_EDGE_DISTANCE;
+        for (const r of otherRects) {
+            const rRight = r.x + r.width;
+            const rBottom = r.y + r.height;
+            const verticalOverlap = !(bottom <= r.y || y >= rBottom);
+            const horizontalOverlap = !(right <= r.x || x >= rRight);
+            if (verticalOverlap) {
+                if (Math.abs(right - r.x) <= dist) { x = r.x - w; }
+                else if (Math.abs(x - rRight) <= dist) { x = rRight; }
+                else if (Math.abs(x - r.x) <= dist) { x = r.x; }
+                else if (Math.abs(right - rRight) <= dist) { x = rRight - w; }
+            }
+            if (horizontalOverlap) {
+                if (Math.abs(bottom - r.y) <= dist) { y = r.y - h; }
+                else if (Math.abs(y - rBottom) <= dist) { y = rBottom; }
+                else if (Math.abs(y - r.y) <= dist) { y = r.y; }
+                else if (Math.abs(bottom - rBottom) <= dist) { y = rBottom - h; }
+            }
+        }
+        return { x, y };
+    }
+    
     // ===== 드래그 =====
     
     /**
@@ -790,21 +865,81 @@ export default class InteractionManager {
         const dx_canvas = dx_screen / this.core.state.zoom;
         const dy_canvas = dy_screen / this.core.state.zoom;
         
-        // 모든 선택 요소 이동
+        const isSnappableType = (el) => {
+            if (el.elementType === 'room' || el.elementType === 'building' || el.elementType === 'other_space') return true;
+            if (el.elementType === 'elevator' || el.elementType === 'stairs' || el.elementType === 'toilet' || el.elementType === 'entrance') return true;
+            if (el.elementType === 'shape' && el.shapeType !== 'line' && el.shapeType !== 'dashed-line') return true;
+            return false;
+        };
+        
+        // 1) 후보 위치 계산 (그리드 스냅 포함)
+        const candidateMap = new Map();
         for (const element of this.dragStart.elements) {
             const originalPos = this.dragStart.originalPositions.get(element.id);
-            if (originalPos) {
-                let newX = originalPos.x + dx_canvas;
-                let newY = originalPos.y + dy_canvas;
-                
-                // 그리드 스냅 적용
-                if (this.core.state.snapToGrid) {
-                    const snapped = this.core.snapToGrid(newX, newY);
-                    newX = snapped.x;
-                    newY = snapped.y;
+            if (!originalPos) continue;
+            let newX = originalPos.x + dx_canvas;
+            let newY = originalPos.y + dy_canvas;
+            if (this.core.state.snapToGrid) {
+                const snapped = this.core.snapToGrid(newX, newY);
+                newX = snapped.x;
+                newY = snapped.y;
+            }
+            candidateMap.set(element.id, {
+                newX, newY,
+                newStartX: originalPos.startX != null ? originalPos.startX + dx_canvas : undefined,
+                newStartY: originalPos.startY != null ? originalPos.startY + dy_canvas : undefined,
+                newEndX: originalPos.endX != null ? originalPos.endX + dx_canvas : undefined,
+                newEndY: originalPos.endY != null ? originalPos.endY + dy_canvas : undefined
+            });
+        }
+        
+        // 2) 인접 스냅: 교실/건물/사각형/기타공간이 근접하면 가장자리에 딱 붙도록
+        const draggedIds = this.dragStart.elements.map(e => e.id);
+        const snappableElements = this.dragStart.elements.filter(isSnappableType);
+        const others = this.getSnappableRects(draggedIds);
+        if (snappableElements.length >= 1 && others.length > 0) {
+            const dist = InteractionManager.SNAP_EDGE_DISTANCE;
+            if (snappableElements.length === 1) {
+                const el = snappableElements[0];
+                const c = candidateMap.get(el.id);
+                const rect = { x: c.newX, y: c.newY, width: el.width || 0, height: el.height || 0 };
+                const snapped = this.snapRectToRects(rect, others, dist);
+                c.newX = snapped.x;
+                c.newY = snapped.y;
+            } else {
+                let minX = Infinity, minY = Infinity, maxR = -Infinity, maxB = -Infinity;
+                for (const el of snappableElements) {
+                    const c = candidateMap.get(el.id);
+                    const w = el.width || 0, h = el.height || 0;
+                    minX = Math.min(minX, c.newX);
+                    minY = Math.min(minY, c.newY);
+                    maxR = Math.max(maxR, c.newX + w);
+                    maxB = Math.max(maxB, c.newY + h);
                 }
-                
-                // AP의 경우 부모 교실 경계 체크
+                const bbox = { x: minX, y: minY, width: maxR - minX, height: maxB - minY };
+                const snapped = this.snapRectToRects(bbox, others, dist);
+                const deltaX = snapped.x - bbox.x;
+                const deltaY = snapped.y - bbox.y;
+                for (const element of this.dragStart.elements) {
+                    const c = candidateMap.get(element.id);
+                    if (!c) continue;
+                    c.newX += deltaX;
+                    c.newY += deltaY;
+                    if (c.newStartX != null) { c.newStartX += deltaX; c.newEndX += deltaX; }
+                    if (c.newStartY != null) { c.newStartY += deltaY; c.newEndY += deltaY; }
+                }
+            }
+        }
+        
+        // 3) 경계/캔버스 적용 후 요소 업데이트
+        for (const element of this.dragStart.elements) {
+            const originalPos = this.dragStart.originalPositions.get(element.id);
+            if (!originalPos) continue;
+            const c = candidateMap.get(element.id);
+            let newX = c.newX;
+            let newY = c.newY;
+            
+            // AP의 경우 부모 교실 경계 체크
                 if (element.elementType === 'wireless_ap' && element.parentElementId) {
                     const parent = this.core.state.elements.find(e => e.id === element.parentElementId);
                     if (parent && parent.elementType === 'room') {
@@ -847,23 +982,14 @@ export default class InteractionManager {
                 newX = Math.max(0, Math.min(canvasWidth - elementWidth, newX));
                 newY = Math.max(0, Math.min(canvasHeight - elementHeight, newY));
                 
-                // 선/점선의 경우 startX, startY, endX, endY도 함께 업데이트
+                // 선/점선의 경우 startX, startY, endX, endY도 함께 업데이트 (후보 맵 값 사용)
                 if (element.elementType === 'shape' && (element.shapeType === 'line' || element.shapeType === 'dashed-line')) {
-                    // originalPos에서 원래 좌표 가져오기
-                    const originalStartX = originalPos.startX;
-                    const originalStartY = originalPos.startY;
-                    const originalEndX = originalPos.endX;
-                    const originalEndY = originalPos.endY;
-                    
-                    const newStartX = originalStartX + dx_canvas;
-                    const newStartY = originalStartY + dy_canvas;
-                    const newEndX = originalEndX + dx_canvas;
-                    const newEndY = originalEndY + dy_canvas;
-                    
-                    // width와 height 재계산
+                    const newStartX = c.newStartX != null ? c.newStartX : originalPos.startX + dx_canvas;
+                    const newStartY = c.newStartY != null ? c.newStartY : originalPos.startY + dy_canvas;
+                    const newEndX = c.newEndX != null ? c.newEndX : originalPos.endX + dx_canvas;
+                    const newEndY = c.newEndY != null ? c.newEndY : originalPos.endY + dy_canvas;
                     const newWidth = Math.abs(newEndX - newStartX);
                     const newHeight = Math.abs(newEndY - newStartY);
-                    
                     this.core.updateElement(element.id, {
                         xCoordinate: Math.min(newStartX, newEndX),
                         yCoordinate: Math.min(newStartY, newEndY),
@@ -875,12 +1001,11 @@ export default class InteractionManager {
                         endY: newEndY
                     });
                 } else {
-                    // 일반 요소 업데이트
-                this.core.updateElement(element.id, {
-                    xCoordinate: newX,
-                    yCoordinate: newY
-                });
-            }
+                    this.core.updateElement(element.id, {
+                        xCoordinate: newX,
+                        yCoordinate: newY
+                    });
+                }
                 
                 // 부모 요소가 이동하면 자식 요소(name_box)도 함께 이동
                 if (element.elementType === 'building' || element.elementType === 'room' || element.elementType === 'seat') {
@@ -929,7 +1054,6 @@ export default class InteractionManager {
                         }
                     }
                 }
-            }
         }
         
         // 강제 리렌더링

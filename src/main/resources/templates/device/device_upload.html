@@ -469,6 +469,11 @@
             background: rgba(239, 68, 68, 0.1);
         }
 
+        .alert.alert-danger span,
+        .alert.alert-danger i {
+            color: #000000;
+        }
+
         .alert i {
             font-size: 1.2rem;
             color: #ffffff;
@@ -737,44 +742,56 @@
             }
         });
         
-        // 폼 업로드 로딩 처리
+        // 폼 업로드 로딩 처리 (업로드 전 확인 및 기존 데이터 안내)
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const form = this;
             const fileInput = document.querySelector('input[name="file"]');
             const schoolSelect = document.querySelector('select[name="schoolId"]');
             const loadingOverlay = document.getElementById('loadingOverlay');
             const uploadBtn = document.getElementById('uploadBtn');
             
-            // 기본 유효성 검사
             if (!schoolSelect.value) {
-                e.preventDefault();
                 alert('학교를 선택해주세요.');
                 return false;
             }
-            
             if (!fileInput.files.length) {
-                e.preventDefault();
                 alert('업로드할 엑셀 파일을 선택해주세요.');
                 return false;
             }
-            
-            // 파일 확장자 검사
             const fileName = fileInput.files[0].name.toLowerCase();
             if (!fileName.endsWith('.xls') && !fileName.endsWith('.xlsx')) {
-                e.preventDefault();
                 alert('엑셀 파일(.xls 또는 .xlsx)만 업로드 가능합니다.');
                 return false;
             }
             
-            // 로딩 상태 활성화
-            loadingOverlay.classList.add('active');
-            uploadBtn.disabled = true;
-            uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 업로드 중...';
-            
-            // 파일 크기가 클 경우 추가 안내
-            const fileSize = fileInput.files[0].size;
-            if (fileSize > 5 * 1024 * 1024) { // 5MB 이상
-                document.querySelector('.loading-subtext').textContent = '파일이 큽니다. 시간이 더 걸릴 수 있습니다...';
-            }
+            var schoolName = schoolSelect.options[schoolSelect.selectedIndex].text;
+            fetch('/device/upload/api/has-devices?schoolId=' + encodeURIComponent(schoolSelect.value))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var msg = schoolName + '에 업로드 하시는 게 맞습니까?';
+                    if (data.hasDevices) {
+                        msg += '\n\n장비 데이터가 이미 있습니다. 그래도 업로드하시겠습니까?';
+                    }
+                    if (!confirm(msg)) {
+                        return;
+                    }
+                    loadingOverlay.classList.add('active');
+                    uploadBtn.disabled = true;
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 업로드 중...';
+                    var fileSize = fileInput.files[0].size;
+                    if (fileSize > 5 * 1024 * 1024) {
+                        var sub = document.querySelector('.loading-subtext');
+                        if (sub) sub.textContent = '파일이 큽니다. 시간이 더 걸릴 수 있습니다...';
+                    }
+                    form.submit();
+                })
+                .catch(function() {
+                    loadingOverlay.classList.add('active');
+                    uploadBtn.disabled = true;
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 업로드 중...';
+                    form.submit();
+                });
         });
         
         // 페이지 로드 시 로딩 상태 해제 (새로고침 대비)
@@ -859,9 +876,11 @@
             additionalInfo = "\n\n데이터가 포함된 엑셀 파일을 업로드해주세요.";
         } else if(errorMessage.includes("설치장소")) {
             additionalInfo = "\n\n설치장소(교실명)는 필수 입력 항목입니다.";
+        } else if(errorMessage.includes("고유번호")) {
+            additionalInfo = "\n\n※ 1열(고유번호)을 비우면 새 고유번호가 자동 부여됩니다.";
         }
         
-        alert(errorMessage + additionalInfo);
+        alert("하단의 오류내역을 확인해주세요.\n\n" + errorMessage + additionalInfo);
     </script>
 </body>
 </html> 

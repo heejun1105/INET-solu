@@ -1,6 +1,7 @@
 package com.inet.controller;
 
 import com.inet.config.PermissionHelper;
+import com.inet.dto.SchoolDto;
 import com.inet.entity.Feature;
 import com.inet.entity.User;
 import com.inet.service.FileDownloadService;
@@ -28,6 +29,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 
 import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
@@ -65,9 +67,11 @@ public class FileDownloadController {
         }
 
         permissionHelper.addPermissionAttributes(user, model);
-        var accessibleSchools = schoolPermissionService.getAccessibleSchools(user);
-        model.addAttribute("schools", accessibleSchools);
-        model.addAttribute("hasAccessibleSchools", !accessibleSchools.isEmpty());
+        var accessibleSchoolEntities = schoolPermissionService.getAccessibleSchools(user);
+        model.addAttribute("schools", accessibleSchoolEntities.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
+        model.addAttribute("hasAccessibleSchools", !accessibleSchoolEntities.isEmpty());
         return "file-download/index";
     }
 

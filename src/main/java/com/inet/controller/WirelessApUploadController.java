@@ -1,5 +1,6 @@
 package com.inet.controller;
 
+import com.inet.dto.SchoolDto;
 import com.inet.entity.Feature;
 import com.inet.entity.User;
 import com.inet.service.WirelessApService;
@@ -18,8 +19,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/wireless-ap/upload")
@@ -76,12 +82,34 @@ public class WirelessApUploadController {
             return "redirect:/";
         }
         
-        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user));
+        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         
         return "wireless-ap/upload";
+    }
+
+    @GetMapping("/api/has-aps")
+    @ResponseBody
+    public ResponseEntity<Map<String, Boolean>> hasAps(@RequestParam Long schoolId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return ResponseEntity.ok(Map.of("hasAps", false));
+        }
+        User user = userService.findByUsername(auth.getName()).orElse(null);
+        if (user == null) {
+            return ResponseEntity.ok(Map.of("hasAps", false));
+        }
+        if (!permissionService.hasPermission(user, Feature.WIRELESS_AP_MANAGEMENT)) {
+            return ResponseEntity.ok(Map.of("hasAps", false));
+        }
+        if (!schoolService.getSchoolById(schoolId).map(school -> schoolPermissionService.hasSchoolPermission(user, school)).orElse(false)) {
+            return ResponseEntity.ok(Map.of("hasAps", false));
+        }
+        return ResponseEntity.ok(Map.of("hasAps", wirelessApService.hasAps(schoolId)));
     }
 
     @PostMapping
@@ -101,9 +129,9 @@ public class WirelessApUploadController {
             wirelessApService.saveWirelessApsFromExcel(file, school);
             redirectAttributes.addFlashAttribute("message", "무선 AP 업로드 성공!");
         } catch (IllegalArgumentException e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "무선 AP 엑셀 업로드"));
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "업로드 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "무선 AP 엑셀 업로드"));
         }
         return "redirect:/wireless-ap/upload";
     }

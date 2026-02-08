@@ -106,7 +106,7 @@ public class AuthController {
             return "redirect:/login";
             
         } catch (RuntimeException e) {
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "회원가입"));
             return "redirect:/signup";
         }
     }
@@ -159,7 +159,7 @@ public class AuthController {
                 model.addAttribute("errorMessage", "일치하는 정보를 찾을 수 없습니다.");
             }
         } catch (Exception e) {
-            model.addAttribute("errorMessage", "아이디 찾기 중 오류가 발생했습니다: " + e.getMessage());
+            model.addAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "아이디 찾기"));
         }
         return "auth/find-result";
     }
@@ -234,7 +234,7 @@ public class AuthController {
                 model.addAttribute("errorMessage", "보안 질문 또는 답변이 일치하지 않습니다.");
             }
         } catch (Exception e) {
-            model.addAttribute("errorMessage", "비밀번호 찾기 중 오류가 발생했습니다: " + e.getMessage());
+            model.addAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "비밀번호 찾기"));
         }
         return "auth/find-result";
     }

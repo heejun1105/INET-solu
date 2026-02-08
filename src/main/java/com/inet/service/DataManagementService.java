@@ -41,6 +41,7 @@ public class DataManagementService {
     private final RoomSeatRepository roomSeatRepository;
     private final EntityManager entityManager;
     private final SchoolRepository schoolRepository;
+    private final SchoolPermissionRepository schoolPermissionRepository;
 
     @Autowired
     public DataManagementService(
@@ -63,7 +64,8 @@ public class DataManagementService {
             FloorRoomRepository floorRoomRepository,
             RoomSeatRepository roomSeatRepository,
             EntityManager entityManager,
-            SchoolRepository schoolRepository) {
+            SchoolRepository schoolRepository,
+            SchoolPermissionRepository schoolPermissionRepository) {
         this.deviceRepository = deviceRepository;
         this.classroomRepository = classroomRepository;
         this.manageRepository = manageRepository;
@@ -84,6 +86,7 @@ public class DataManagementService {
         this.roomSeatRepository = roomSeatRepository;
         this.entityManager = entityManager;
         this.schoolRepository = schoolRepository;
+        this.schoolPermissionRepository = schoolPermissionRepository;
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -215,6 +218,8 @@ public class DataManagementService {
                 totalRecordsDeleted += deletedManages;
                 logger.debug("Deleted {} manages", deletedManages);
                 
+                // 학교 권한(school_permissions)은 삭제하지 않음 (유지)
+                
             } finally {
                 // 외래키 제약조건 다시 활성화
                 entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS = 1").executeUpdate();
@@ -239,9 +244,9 @@ public class DataManagementService {
                 throw new RuntimeException(errorMsg);
             }
 
-            // 14. 처리 결과 로깅
+            // 학교 엔티티는 삭제하지 않음 (학교 데이터는 유지)
             long endTime = System.currentTimeMillis();
-            logger.info("Successfully deleted school data for '{}' in {}ms. Total records deleted: {}", 
+            logger.info("Successfully deleted all related data for school '{}' (school retained) in {}ms. Total records deleted: {}", 
                 school.getSchoolName(), (endTime - startTime), totalRecordsDeleted);
             
         } catch (Exception e) {

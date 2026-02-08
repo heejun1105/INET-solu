@@ -9,10 +9,6 @@ import com.inet.entity.School;
 import com.inet.service.WirelessApService;
 import com.inet.service.ClassroomService;
 import com.inet.service.SchoolService;
-import com.inet.config.Views;
-import com.fasterxml.jackson.annotation.JsonView;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import java.time.LocalDate;
 import java.util.List;
 import com.inet.entity.Feature;
@@ -24,6 +20,7 @@ import com.inet.config.PermissionHelper;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +28,7 @@ import org.springframework.core.io.ByteArrayResource;
 import java.io.ByteArrayOutputStream;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.*;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -42,12 +40,21 @@ import java.util.Set;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
+import com.inet.dto.WirelessApListDto;
+import com.inet.dto.WirelessApListResponseDto;
+import com.inet.dto.ClassroomDto;
+import com.inet.dto.SchoolDto;
+import com.inet.dto.WirelessApSummaryDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 @Controller
 @RequestMapping("/wireless-ap")
-@RequiredArgsConstructor
 public class WirelessApController {
+
+    private static final Logger log = LoggerFactory.getLogger(WirelessApController.class);
 
     private final WirelessApService wirelessApService;
     private final ClassroomService classroomService;
@@ -57,6 +64,24 @@ public class WirelessApController {
     private final UserService userService;
     private final PermissionHelper permissionHelper;
     private final com.inet.service.WirelessApHistoryService wirelessApHistoryService;
+
+    public WirelessApController(WirelessApService wirelessApService,
+                                ClassroomService classroomService,
+                                SchoolService schoolService,
+                                PermissionService permissionService,
+                                SchoolPermissionService schoolPermissionService,
+                                UserService userService,
+                                PermissionHelper permissionHelper,
+                                com.inet.service.WirelessApHistoryService wirelessApHistoryService) {
+        this.wirelessApService = wirelessApService;
+        this.classroomService = classroomService;
+        this.schoolService = schoolService;
+        this.permissionService = permissionService;
+        this.schoolPermissionService = schoolPermissionService;
+        this.userService = userService;
+        this.permissionHelper = permissionHelper;
+        this.wirelessApHistoryService = wirelessApHistoryService;
+    }
 
     // 권한 체크 메서드
     private User checkPermission(Feature feature, RedirectAttributes redirectAttributes) {
@@ -95,11 +120,22 @@ public class WirelessApController {
     }
 
     @GetMapping("/list")
-    public String list(@RequestParam(value = "schoolId", required = false) Long schoolId, Model model, RedirectAttributes redirectAttributes) {
-        // 권한 체크 (학교별 권한 체크는 schoolId가 있을 때만)
+    public String list(@RequestParam(value = "schoolId", required = false) Long schoolId,
+                       @RequestParam(value = "classroomId", required = false) Long classroomId,
+                       @RequestParam(value = "searchKeyword", required = false) String searchKeyword,
+                       Model model, RedirectAttributes redirectAttributes, HttpServletRequest request) {
+        // 권한 체크 (학교별 권한 체크는 schoolId 또는 교실의 학교가 있을 때)
         User user;
-        if (schoolId != null) {
-            user = checkSchoolPermission(Feature.WIRELESS_AP_LIST, schoolId, redirectAttributes);
+        Long effectiveSchoolId = schoolId;
+        if (classroomId != null) {
+            Classroom classroom = classroomService.getClassroomById(classroomId)
+                    .orElse(null);
+            if (classroom != null && classroom.getSchool() != null) {
+                effectiveSchoolId = classroom.getSchool().getSchoolId();
+            }
+        }
+        if (effectiveSchoolId != null) {
+            user = checkSchoolPermission(Feature.WIRELESS_AP_LIST, effectiveSchoolId, redirectAttributes);
         } else {
             user = checkPermission(Feature.WIRELESS_AP_LIST, redirectAttributes);
         }
@@ -107,13 +143,22 @@ public class WirelessApController {
             return "redirect:/";
         }
         List<WirelessAp> wirelessAps;
-        List<School> schools = schoolPermissionService.getAccessibleSchools(user);
+        List<SchoolDto> schools = schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList());
         
-        if (schoolId != null) {
+        if (classroomId != null) {
+            Classroom classroom = classroomService.getClassroomById(classroomId)
+                    .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+            wirelessAps = wirelessApService.getWirelessApsByLocation(classroom);
+            model.addAttribute("selectedSchoolId", classroom.getSchool() != null ? classroom.getSchool().getSchoolId() : null);
+            model.addAttribute("selectedClassroomId", classroomId);
+        } else if (schoolId != null) {
             School selectedSchool = schoolService.getSchoolById(schoolId)
                     .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
             wirelessAps = wirelessApService.getWirelessApsBySchool(selectedSchool);
             model.addAttribute("selectedSchoolId", schoolId);
+            model.addAttribute("selectedClassroomId", null);
         } else {
             wirelessAps = wirelessApService.getAllWirelessAps();
             // 학교별로 정렬
@@ -129,10 +174,42 @@ public class WirelessApController {
                                  ap2.getLocation().getRoomName() : "미지정 교실";
                 return location1.compareTo(location2);
             });
+            model.addAttribute("selectedClassroomId", null);
+        }
+        if (searchKeyword != null && !searchKeyword.trim().isEmpty()) {
+            wirelessAps = wirelessApService.filterBySearchKeyword(wirelessAps, searchKeyword);
         }
         
-        model.addAttribute("wirelessAps", wirelessAps);
+        // 등록/수정 후 돌아올 때 필터 유지를 위한 현재 목록 URL
+        String listUrl = request != null && request.getRequestURL() != null
+                ? request.getRequestURL().toString() + (request.getQueryString() != null && !request.getQueryString().isEmpty() ? "?" + request.getQueryString() : "")
+                : "/wireless-ap/list";
+        String listUrlEncoded = "";
+        try {
+            listUrlEncoded = listUrl != null ? java.net.URLEncoder.encode(listUrl, java.nio.charset.StandardCharsets.UTF_8) : "";
+        } catch (Exception e) {
+            // ignore
+        }
+        
+        // DTO 목록 및 API 응답 형식으로 전달
+        List<WirelessApListDto> dtoList = wirelessApService.toListDtoList(wirelessAps);
+        int total = dtoList.size();
+        WirelessApListResponseDto listResponse = WirelessApListResponseDto.builder()
+                .wirelessAps(dtoList)
+                .currentPage(1)
+                .pageSize(total > 0 ? total : 10)
+                .totalPages(1)
+                .startPage(1)
+                .endPage(1)
+                .listUrlEncoded(listUrlEncoded)
+                .searchKeyword(searchKeyword != null ? searchKeyword : "")
+                .build();
+        
+        model.addAttribute("wirelessApListResponse", listResponse);
         model.addAttribute("schools", schools);
+        model.addAttribute("searchKeyword", searchKeyword != null ? searchKeyword : "");
+        model.addAttribute("listUrl", listUrl);
+        model.addAttribute("listUrlEncoded", listUrlEncoded);
         
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
@@ -141,7 +218,7 @@ public class WirelessApController {
     }
 
     @GetMapping("/register")
-    public String registerForm(Model model, RedirectAttributes redirectAttributes) {
+    public String registerForm(@RequestParam(required = false) String returnUrl, Model model, RedirectAttributes redirectAttributes) {
         // 권한 체크
         User user = checkPermission(Feature.WIRELESS_AP_MANAGEMENT, redirectAttributes);
         if (user == null) {
@@ -149,8 +226,12 @@ public class WirelessApController {
         }
         
         model.addAttribute("wirelessAp", new WirelessAp());
-        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user));
-        
+        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
+        if (returnUrl != null && !returnUrl.isBlank()) {
+            model.addAttribute("returnUrl", returnUrl);
+        }
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         
@@ -160,9 +241,11 @@ public class WirelessApController {
     @PostMapping("/register")
     public String register(WirelessAp wirelessAp, 
                           @RequestParam("schoolId") Long schoolId,
-                          @RequestParam("locationId") Long locationId,
-                           @RequestParam(value = "apYear", required = false) Integer apYear,
-                           RedirectAttributes redirectAttributes) {
+                          @RequestParam(value = "locationId", required = false) Long locationId,
+                          @RequestParam(value = "locationName", required = false) String locationName,
+                          @RequestParam(value = "apYear", required = false) Integer apYear,
+                          @RequestParam(required = false) String returnUrl,
+                          RedirectAttributes redirectAttributes) {
         // 권한 체크 (학교별 권한 체크)
         User user = checkSchoolPermission(Feature.WIRELESS_AP_MANAGEMENT, schoolId, redirectAttributes);
         if (user == null) {
@@ -181,17 +264,45 @@ public class WirelessApController {
             wirelessAp.setAPYear(LocalDate.of(apYear, 1, 1));
         }
         
-        // 교실 설정
-        Classroom classroom = classroomService.getClassroomById(locationId)
-                .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + locationId));
-        wirelessAp.setLocation(classroom);
+        // 교실 설정: 셀렉트(locationId) 우선, 없으면 직접입력(locationName)으로 찾기/생성
+        if (locationId != null && locationId > 0) {
+            Classroom classroom = classroomService.getClassroomById(locationId)
+                    .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + locationId));
+            wirelessAp.setLocation(classroom);
+        } else if (locationName != null && !locationName.trim().isEmpty()) {
+            var existingClassroom = classroomService.findByRoomNameAndSchool(locationName.trim(), schoolId);
+            Classroom classroom;
+            if (existingClassroom.isPresent()) {
+                classroom = existingClassroom.get();
+            } else {
+                classroom = new Classroom();
+                classroom.setRoomName(locationName.trim());
+                classroom.setSchool(school);
+                classroom.setXCoordinate(0);
+                classroom.setYCoordinate(0);
+                classroom.setWidth(100);
+                classroom.setHeight(100);
+                classroom = classroomService.saveClassroom(classroom);
+            }
+            wirelessAp.setLocation(classroom);
+        } else {
+            throw new IllegalArgumentException("교실을 선택하거나 직접 입력해주세요.");
+        }
         
         wirelessApService.saveWirelessAp(wirelessAp);
+        if (returnUrl != null && !returnUrl.isBlank()) {
+            try {
+                String decoded = java.net.URLDecoder.decode(returnUrl, java.nio.charset.StandardCharsets.UTF_8);
+                return "redirect:" + decoded;
+            } catch (Exception e) {
+                return "redirect:" + returnUrl;
+            }
+        }
         return "redirect:/wireless-ap/list";
     }
 
     @GetMapping("/modify/{id}")
-    public String modifyForm(@PathVariable Long id, Model model, RedirectAttributes redirectAttributes) {
+    public String modifyForm(@PathVariable Long id, Model model, RedirectAttributes redirectAttributes, HttpServletRequest request) {
         // 무선AP 조회
         WirelessAp wirelessAp = wirelessApService.getWirelessApById(id)
                 .orElseThrow(() -> new RuntimeException("Wireless AP not found with id: " + id));
@@ -203,8 +314,19 @@ public class WirelessApController {
         }
         
         model.addAttribute("wirelessAp", wirelessAp);
-        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user));
-        
+        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
+        // 이전 목록 URL: 쿼리 파라미터 returnUrl 우선, 없으면 Referer 사용
+        String returnUrlParam = request != null ? request.getParameter("returnUrl") : null;
+        if (returnUrlParam != null && !returnUrlParam.isBlank()) {
+            model.addAttribute("returnUrl", returnUrlParam);
+        } else {
+            String referer = request != null ? request.getHeader("Referer") : null;
+            if (referer != null && !referer.contains("/wireless-ap/modify")) {
+                model.addAttribute("returnUrl", referer);
+            }
+        }
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         
@@ -214,8 +336,10 @@ public class WirelessApController {
     @PostMapping("/modify")
     public String modify(WirelessAp wirelessAp, 
                         @RequestParam("schoolId") Long schoolId,
-                        @RequestParam("locationName") String locationName,
+                        @RequestParam(value = "locationId", required = false) Long locationId,
+                        @RequestParam(value = "locationName", required = false) String locationName,
                         @RequestParam(value = "apYear", required = false) Integer apYear,
+                        @RequestParam(required = false) String returnUrl,
                         RedirectAttributes redirectAttributes) {
         // 권한 체크 (학교별 권한 체크)
         User user = checkSchoolPermission(Feature.WIRELESS_AP_MANAGEMENT, schoolId, redirectAttributes);
@@ -235,17 +359,19 @@ public class WirelessApController {
             wirelessAp.setAPYear(LocalDate.of(apYear, 1, 1));
         }
         
-        // 교실 처리
-        if (locationName != null && !locationName.trim().isEmpty()) {
-            var existingClassroom = classroomService.findByRoomNameAndSchool(locationName, schoolId);
+        // 교실 처리: 셀렉트 선택(locationId) 우선, 없으면 직접입력(locationName)으로 찾기/생성
+        if (locationId != null && locationId > 0) {
+            Classroom classroom = classroomService.getClassroomById(locationId)
+                    .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + locationId));
+            wirelessAp.setLocation(classroom);
+        } else if (locationName != null && !locationName.trim().isEmpty()) {
+            var existingClassroom = classroomService.findByRoomNameAndSchool(locationName.trim(), schoolId);
             Classroom classroom;
-            
             if (existingClassroom.isPresent()) {
                 classroom = existingClassroom.get();
             } else {
-                // 새로운 교실 생성
                 classroom = new Classroom();
-                classroom.setRoomName(locationName);
+                classroom.setRoomName(locationName.trim());
                 classroom.setSchool(school);
                 classroom.setXCoordinate(0);
                 classroom.setYCoordinate(0);
@@ -258,6 +384,14 @@ public class WirelessApController {
         
         wirelessApService.updateWirelessApWithHistory(wirelessAp, user);
         redirectAttributes.addFlashAttribute("success", "무선 AP가 성공적으로 수정되었습니다.");
+        if (returnUrl != null && !returnUrl.isBlank()) {
+            try {
+                String decoded = java.net.URLDecoder.decode(returnUrl, java.nio.charset.StandardCharsets.UTF_8);
+                return "redirect:" + decoded;
+            } catch (Exception e) {
+                return "redirect:" + returnUrl;
+            }
+        }
         return "redirect:/wireless-ap/list";
     }
 
@@ -278,28 +412,161 @@ public class WirelessApController {
         return "redirect:/wireless-ap/list";
     }
 
+    /** 무선 AP 목록 API (DTO 반환, 검색/필터 지원) */
+    @GetMapping("/api/list")
+    @ResponseBody
+    public ResponseEntity<?> listApi(
+            @RequestParam(value = "schoolId", required = false) Long schoolId,
+            @RequestParam(value = "classroomId", required = false) Long classroomId,
+            @RequestParam(value = "searchKeyword", required = false) String searchKeyword,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size,
+            HttpServletRequest request) {
+        User user;
+        Long effectiveSchoolId = schoolId;
+        if (classroomId != null) {
+            Classroom classroom = classroomService.getClassroomById(classroomId).orElse(null);
+            if (classroom != null && classroom.getSchool() != null) {
+                effectiveSchoolId = classroom.getSchool().getSchoolId();
+            }
+        }
+        if (effectiveSchoolId != null) {
+            user = checkSchoolPermission(Feature.WIRELESS_AP_LIST, effectiveSchoolId, new RedirectAttributesModelMap());
+        } else {
+            user = checkPermission(Feature.WIRELESS_AP_LIST, new RedirectAttributesModelMap());
+        }
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        List<WirelessAp> wirelessAps;
+        if (classroomId != null) {
+            Classroom classroom = classroomService.getClassroomById(classroomId)
+                    .orElseThrow(() -> new RuntimeException("Classroom not found with id: " + classroomId));
+            wirelessAps = wirelessApService.getWirelessApsByLocation(classroom);
+        } else if (schoolId != null) {
+            School selectedSchool = schoolService.getSchoolById(schoolId)
+                    .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+            wirelessAps = wirelessApService.getWirelessApsBySchool(selectedSchool);
+        } else {
+            wirelessAps = wirelessApService.getAllWirelessAps();
+            wirelessAps.sort((ap1, ap2) -> {
+                String school1 = ap1.getSchool() != null ? ap1.getSchool().getSchoolName() : "미지정";
+                String school2 = ap2.getSchool() != null ? ap2.getSchool().getSchoolName() : "미지정";
+                int schoolComparison = school1.compareTo(school2);
+                if (schoolComparison != 0) return schoolComparison;
+                String location1 = ap1.getLocation() != null && ap1.getLocation().getRoomName() != null ? ap1.getLocation().getRoomName() : "미지정 교실";
+                String location2 = ap2.getLocation() != null && ap2.getLocation().getRoomName() != null ? ap2.getLocation().getRoomName() : "미지정 교실";
+                return location1.compareTo(location2);
+            });
+        }
+        if (searchKeyword != null && !searchKeyword.trim().isEmpty()) {
+            wirelessAps = wirelessApService.filterBySearchKeyword(wirelessAps, searchKeyword);
+        }
+        List<WirelessApListDto> dtoList = wirelessApService.toListDtoList(wirelessAps);
+        int total = dtoList.size();
+        int totalPages = size > 0 ? (int) Math.ceil((double) total / size) : 1;
+        int safePage = Math.max(1, Math.min(page, totalPages));
+        int from = (safePage - 1) * size;
+        int to = Math.min(from + size, total);
+        List<WirelessApListDto> pageList = from < total ? dtoList.subList(from, to) : List.of();
+        int startPage = Math.max(1, safePage - 2);
+        int endPage = Math.min(totalPages, safePage + 2);
+        // 수정/등록 후 복귀 시 필터 유지를 위해 쿼리 포함
+        StringBuilder listUrlSb = new StringBuilder("/wireless-ap/list");
+        if (schoolId != null) {
+            listUrlSb.append("?schoolId=").append(schoolId);
+        }
+        if (classroomId != null) {
+            listUrlSb.append(listUrlSb.indexOf("?") >= 0 ? "&" : "?").append("classroomId=").append(classroomId);
+        }
+        if (searchKeyword != null && !searchKeyword.trim().isEmpty()) {
+            try {
+                listUrlSb.append(listUrlSb.indexOf("?") >= 0 ? "&" : "?").append("searchKeyword=")
+                        .append(java.net.URLEncoder.encode(searchKeyword.trim(), java.nio.charset.StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                listUrlSb.append(listUrlSb.indexOf("?") >= 0 ? "&" : "?").append("searchKeyword=").append(searchKeyword.trim());
+            }
+        }
+        String listUrlEncoded = "";
+        try {
+            listUrlEncoded = java.net.URLEncoder.encode(listUrlSb.toString(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // ignore
+        }
+        WirelessApListResponseDto response = WirelessApListResponseDto.builder()
+                .wirelessAps(pageList)
+                .currentPage(safePage)
+                .pageSize(size)
+                .totalPages(totalPages)
+                .startPage(startPage)
+                .endPage(endPage)
+                .listUrlEncoded(listUrlEncoded)
+                .searchKeyword(searchKeyword != null ? searchKeyword : "")
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
     // 학교별 교실 목록 조회 API
     @GetMapping("/api/classrooms/{schoolId}")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public List<Classroom> getClassroomsBySchool(@PathVariable Long schoolId) {
+    public List<ClassroomDto> getClassroomsBySchool(@PathVariable Long schoolId) {
         log.info("Getting classrooms for school id: {}", schoolId);
-        return classroomService.findBySchoolId(schoolId);
+        return classroomService.findBySchoolId(schoolId).stream()
+                .map(c -> new ClassroomDto(
+                        c.getClassroomId(),
+                        c.getRoomName(),
+                        c.getXCoordinate(),
+                        c.getYCoordinate(),
+                        c.getWidth(),
+                        c.getHeight(),
+                        c.getDisplayOrder()
+                ))
+                .collect(Collectors.toList());
     }
     
     @GetMapping("/api/classrooms")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public List<Classroom> getAllClassrooms() {
+    public List<ClassroomDto> getAllClassrooms() {
         log.info("Getting all classrooms for wireless-ap module");
-        return classroomService.getAllClassrooms();
+        return classroomService.getAllClassrooms().stream()
+                .map(c -> new ClassroomDto(
+                        c.getClassroomId(),
+                        c.getRoomName(),
+                        c.getXCoordinate(),
+                        c.getYCoordinate(),
+                        c.getWidth(),
+                        c.getHeight(),
+                        c.getDisplayOrder()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    /** MAC 주소 중복 체크 API (등록/수정 시 사용, excludeApId: 수정 시 제외할 AP ID) */
+    @GetMapping("/api/check-mac")
+    @ResponseBody
+    public ResponseEntity<Map<String, Boolean>> checkMacDuplicate(
+            @RequestParam("value") String value,
+            @RequestParam(value = "excludeApId", required = false) Long excludeApId) {
+        Map<String, Boolean> result = new HashMap<>();
+        result.put("duplicate", wirelessApService.existsByMacAddress(value, excludeApId));
+        return ResponseEntity.ok(result);
+    }
+
+    /** 새 라벨 번호 중복 체크 API (등록/수정 시 사용, excludeApId: 수정 시 제외할 AP ID) */
+    @GetMapping("/api/check-label")
+    @ResponseBody
+    public ResponseEntity<Map<String, Boolean>> checkLabelDuplicate(
+            @RequestParam("value") String value,
+            @RequestParam(value = "excludeApId", required = false) Long excludeApId) {
+        Map<String, Boolean> result = new HashMap<>();
+        result.put("duplicate", wirelessApService.existsByNewLabelNumber(value, excludeApId));
+        return ResponseEntity.ok(result);
     }
     
     // 학교별 무선AP 목록 조회 API (평면도 뷰어용)
     @GetMapping("/api/wireless-aps/school/{schoolId}")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public ResponseEntity<List<WirelessAp>> getWirelessApsBySchoolId(@PathVariable Long schoolId) {
+    public ResponseEntity<List<WirelessApSummaryDto>> getWirelessApsBySchoolId(@PathVariable Long schoolId) {
         try {
             log.info("Getting wireless APs for school id: {}", schoolId);
             
@@ -309,8 +576,24 @@ public class WirelessApController {
             List<WirelessAp> wirelessAps = wirelessApService.getWirelessApsBySchool(school);
             
             log.info("Found {} wireless APs for school: {}", wirelessAps.size(), school.getSchoolName());
-            
-            return ResponseEntity.ok(wirelessAps);
+            List<WirelessApSummaryDto> dtoList = wirelessAps.stream()
+                    .map(ap -> new WirelessApSummaryDto(
+                            ap.getAPId(),
+                            ap.getSchool() != null ? ap.getSchool().getSchoolId() : null,
+                            ap.getLocation() != null ? ap.getLocation().getClassroomId() : null,
+                            ap.getNewLabelNumber(),
+                            ap.getDeviceNumber(),
+                            ap.getAPYear(),
+                            ap.getManufacturer(),
+                            ap.getModel(),
+                            ap.getMacAddress(),
+                            ap.getPrevLocation(),
+                            ap.getPrevLabelNumber(),
+                            ap.getClassroomType(),
+                            ap.getSpeed()
+                    ))
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(dtoList);
             
         } catch (Exception e) {
             log.error("Error getting wireless APs for school id: {}", schoolId, e);
@@ -334,11 +617,13 @@ public class WirelessApController {
 
             List<WirelessAp> wirelessAps;
             String fileName = "무선AP_목록";
+            String titleSchoolName = ""; // 1행 제목용: 필터링된 학교명
 
             if (schoolId != null) {
                 School school = schoolService.getSchoolById(schoolId)
                         .orElseThrow(() -> new RuntimeException("School not found"));
                 wirelessAps = wirelessApService.getWirelessApsBySchool(school);
+                titleSchoolName = school.getSchoolName() != null ? school.getSchoolName() : "";
                 fileName += "_" + school.getSchoolName();
                 
                 if (classroomId != null) {
@@ -351,6 +636,9 @@ public class WirelessApController {
                 }
             } else {
                 wirelessAps = wirelessApService.getAllWirelessAps();
+                if (!wirelessAps.isEmpty() && wirelessAps.get(0).getSchool() != null) {
+                    titleSchoolName = wirelessAps.get(0).getSchool().getSchoolName() != null ? wirelessAps.get(0).getSchool().getSchoolName() : "";
+                }
             }
 
             fileName += "_" + LocalDate.now() + ".xlsx";
@@ -360,7 +648,7 @@ public class WirelessApController {
             Workbook workbook = new XSSFWorkbook();
             
             // 첫 번째 시트: 총괄표
-            createSummarySheet(workbook, wirelessAps);
+            createSummarySheet(workbook, wirelessAps, titleSchoolName);
             
             // 두 번째 시트: 무선AP 목록
             Sheet sheet = workbook.createSheet("무선AP 목록");
@@ -389,14 +677,10 @@ public class WirelessApController {
             dataStyle.setBorderLeft(BorderStyle.THIN);
             dataStyle.setBorderRight(BorderStyle.THIN);
 
-            // 1행: 학교이름 + "무선 AP 현황" 표기
-            String schoolName = "";
-            if (!wirelessAps.isEmpty() && wirelessAps.get(0).getSchool() != null) {
-                schoolName = wirelessAps.get(0).getSchool().getSchoolName();
-            }
+            // 1행: 필터링된 학교이름 + "무선 AP 현황" 표기
             Row titleRow = sheet.createRow(0);
             Cell titleCell = titleRow.createCell(0);
-            titleCell.setCellValue(schoolName + " 무선 AP 현황");
+            titleCell.setCellValue(titleSchoolName + " 무선 AP 현황");
             titleCell.setCellStyle(headerStyle);
             sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 10)); // A1:K1 병합
 
@@ -495,7 +779,7 @@ public class WirelessApController {
         }
     }
 
-    private void createSummarySheet(Workbook workbook, List<WirelessAp> wirelessAps) {
+    private void createSummarySheet(Workbook workbook, List<WirelessAp> wirelessAps, String titleSchoolName) {
         Sheet summarySheet = workbook.createSheet("총괄표");
         
         // 스타일 정의
@@ -521,14 +805,10 @@ public class WirelessApController {
         dataStyle.setBorderLeft(BorderStyle.THIN);
         dataStyle.setBorderRight(BorderStyle.THIN);
 
-        // 1행: 학교이름 + "무선 AP" 표기
-        String schoolName = "";
-        if (!wirelessAps.isEmpty() && wirelessAps.get(0).getSchool() != null) {
-            schoolName = wirelessAps.get(0).getSchool().getSchoolName();
-        }
+        // 1행: 필터링된 학교이름 + "무선 AP" 표기
         Row titleRow = summarySheet.createRow(0);
         Cell titleCell = titleRow.createCell(0);
-        titleCell.setCellValue(schoolName + " 무선 AP");
+        titleCell.setCellValue((titleSchoolName != null ? titleSchoolName : "") + " 무선 AP");
         titleCell.setCellStyle(headerStyle);
         summarySheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 6)); // A1:G1 병합
 

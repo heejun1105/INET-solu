@@ -338,7 +338,7 @@
                 building: currentBuilding,
                 floor: currentFloor,
                 devices: devices.filter(device => 
-                    device.classroom && device.classroom.classroomId === draggedRoom.classroomId
+                    device.classroomId === draggedRoom.classroomId
                 )
             });
 
@@ -398,7 +398,7 @@
                     infoPanel.style.top = e.clientY + 10 + 'px';
                     roomName.textContent = room.name;
                     deviceList.innerHTML = room.devices.map(d => 
-                        `<div class="device-item">${d.manageNo} - ${d.type}</div>`
+                        `<div class="device-item">${d.manageDisplay || ''} - ${d.type || ''}</div>`
                     ).join('');
                 }
             });

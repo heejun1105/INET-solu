@@ -44,6 +44,7 @@ export default class ElementManager {
      * @returns {Object} 생성된 요소
      */
     createElement(elementType, properties = {}) {
+        const currentPage = properties.pageNumber ?? this.core.currentPage ?? (typeof window !== 'undefined' && window.floorPlanApp?.currentPage) ?? 1;
         const element = {
             id: this.generateElementId(),
             elementType,
@@ -54,6 +55,8 @@ export default class ElementManager {
             zIndex: properties.zIndex || 0,
             ...properties
         };
+        // 2페이지 이상에서도 배치된 요소가 보이도록 현재 페이지 번호 명시 설정
+        element.pageNumber = properties.pageNumber ?? currentPage;
         
         // 기본값 설정
         this.applyDefaults(element);

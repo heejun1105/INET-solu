@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Optional;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @Transactional
@@ -282,6 +284,62 @@ public class UidService {
     }
 
     /**
+     * 학교와 표시 고유번호(display_uid)로 Uid 조회
+     */
+    public Optional<Uid> findBySchoolAndDisplayUid(School school, String displayUid) {
+        if (school == null || displayUid == null || displayUid.isBlank()) {
+            return Optional.empty();
+        }
+        return uidRepository.findBySchoolAndDisplayUid(school, displayUid.trim());
+    }
+
+    /** DB/전체 형식: (학교ID)? + 카테고리2자 + 제조년2자/xx + 일련번호4자. 예: 2DW250001 */
+    private static final Pattern DISPLAY_UID_FULL = Pattern.compile("^(\\d{1,2})?([A-Za-z]{2})(\\d{2}|xx)(\\d{4})$", Pattern.CASE_INSENSITIVE);
+    /** 엑셀 내보내기 형식: (학교ID)? + 카테고리2자 + 학교IP2자 + 제조년2자/xx + 일련번호4자. 예: 2DW02250001 */
+    private static final Pattern DISPLAY_UID_WITH_IP = Pattern.compile("^(\\d{1,2})?([A-Za-z]{2})\\d{2}(\\d{2}|xx)(\\d{4})$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 엑셀 1열 등에 입력된 고유번호 문자열로 Uid를 조회하거나, 없으면 파싱하여 생성 후 반환.
+     * 형식: 2DW250001(학교ID+카테고리+제조년+번호), 2DW02250001(엑셀 내보내기 형식), DW250001(학교ID 생략)
+     * 실패 시 업로드 페이지 알림에 표시할 수 있도록 구체적인 한글 사유를 담은 예외를 던짐.
+     */
+    public Uid findOrCreateByDisplayUidString(School school, String displayUidStr) {
+        if (school == null || displayUidStr == null || displayUidStr.isBlank()) {
+            throw new IllegalArgumentException("학교와 고유번호 값이 필요합니다. 1열을 비우면 새 고유번호가 부여됩니다.");
+        }
+        String normalized = displayUidStr.trim().replaceAll("[\\s-]", "");
+        Optional<Uid> existing = findBySchoolAndDisplayUid(school, normalized);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        String cate;
+        String mfgYear;
+        long idNumber;
+        Matcher mFull = DISPLAY_UID_FULL.matcher(normalized);
+        Matcher mWithIp = DISPLAY_UID_WITH_IP.matcher(normalized);
+        if (mWithIp.matches()) {
+            cate = mWithIp.group(2).toUpperCase();
+            mfgYear = mWithIp.group(3).toLowerCase();
+            idNumber = Long.parseLong(mWithIp.group(4));
+            if (mWithIp.group(1) != null && !mWithIp.group(1).isEmpty() && Long.parseLong(mWithIp.group(1)) != school.getSchoolId()) {
+                throw new IllegalArgumentException("고유번호에 적힌 학교와 선택한 학교가 다릅니다. 선택한 학교에 맞는 고유번호를 넣거나 1열을 비워두세요.");
+            }
+        } else if (mFull.matches()) {
+            cate = mFull.group(2).toUpperCase();
+            mfgYear = mFull.group(3).toLowerCase();
+            idNumber = Long.parseLong(mFull.group(4));
+            if (mFull.group(1) != null && !mFull.group(1).isEmpty() && Long.parseLong(mFull.group(1)) != school.getSchoolId()) {
+                throw new IllegalArgumentException("고유번호에 적힌 학교와 선택한 학교가 다릅니다. 선택한 학교에 맞는 고유번호를 넣거나 1열을 비워두세요.");
+            }
+        } else {
+            throw new IllegalArgumentException(
+                "1열 고유번호 형식이 맞지 않습니다. 예: 2DW250001, DW250001 (카테고리2자+제조년2자+번호4자). 형식에 맞게 입력하거나 1열을 비우면 새 번호가 부여됩니다.");
+        }
+        return uidRepository.findBySchoolAndCateAndMfgYearAndIdNumber(school, cate, mfgYear, idNumber)
+                .orElseGet(() -> createUidWithMfgYear(cate, idNumber, mfgYear, school));
+    }
+
+    /**
      * 특정 학교, 카테고리, 제조년으로 마지막 ID 번호 조회
      * @param school 학교
      * @param cate 카테고리
@@ -295,11 +353,11 @@ public class UidService {
     }
 
     /**
-     * 현재 연도에서 2자리 연도 추출 (예: 2025 -> 25)
-     * @return 2자리 연도
+     * 현재 연도에서 2자리 연도 추출 (예: 2025 -> "25", 2008 -> "08")
+     * @return 2자리 연도 (앞자리 0 포함)
      */
     public String getCurrentTwoDigitYear() {
-        return String.valueOf(LocalDate.now().getYear() % 100);
+        return String.format("%02d", LocalDate.now().getYear() % 100);
     }
 
     /**

@@ -48,7 +48,7 @@ public class NetworkEquipmentController {
         } catch (Exception e) {
             logger.error("네트워크 장비 조회 실패 - schoolId: {}", schoolId, e);
             response.put("success", false);
-            response.put("message", "네트워크 장비 조회에 실패했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "네트워크 장비 조회"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -110,7 +110,7 @@ public class NetworkEquipmentController {
         } catch (Exception e) {
             logger.error("네트워크 장비 수정 실패 - equipmentId: {}", equipmentId, e);
             response.put("success", false);
-            response.put("message", "네트워크 장비 수정에 실패했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "네트워크 장비 수정"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -132,7 +132,7 @@ public class NetworkEquipmentController {
         } catch (Exception e) {
             logger.error("네트워크 장비 삭제 실패 - equipmentId: {}", equipmentId, e);
             response.put("success", false);
-            response.put("message", "네트워크 장비 삭제에 실패했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "네트워크 장비 삭제"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }

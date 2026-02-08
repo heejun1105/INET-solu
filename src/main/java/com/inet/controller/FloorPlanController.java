@@ -30,6 +30,9 @@ import java.util.HashMap;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import com.inet.service.ClassroomService;
+import com.inet.dto.SchoolDto;
+import com.inet.dto.UnplacedClassroomDto;
+import com.inet.dto.UnplacedClassroomsResponseDto;
 import com.inet.entity.Classroom;
 import com.inet.entity.FloorPlan;
 import com.inet.entity.FloorPlanElement;
@@ -82,8 +85,9 @@ public class FloorPlanController {
             return "redirect:/";
         }
         
-        List<School> schools = schoolPermissionService.getAccessibleSchools(user);
-        model.addAttribute("schools", schools);
+        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         permissionHelper.addPermissionAttributes(user, model);
         
@@ -127,7 +131,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("평면도 조회 실패 - schoolId: {}", schoolId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("평면도 조회 중 오류가 발생했습니다: " + e.getMessage()));
+                .body(ApiResponse.error(com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 조회")));
         }
     }
     
@@ -167,12 +171,12 @@ public class FloorPlanController {
         } catch (IllegalArgumentException e) {
             logger.warn("평면도 저장 실패 - 잘못된 요청: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(e.getMessage()));
+                .body(ApiResponse.error(com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 저장")));
                 
         } catch (Exception e) {
             logger.error("평면도 저장 실패 - schoolId: {}", schoolId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("평면도 저장 중 오류가 발생했습니다: " + e.getMessage()));
+                .body(ApiResponse.error(com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 저장")));
         }
     }
     
@@ -209,7 +213,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("평면도 삭제 실패 - schoolId: {}", schoolId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("평면도 삭제 중 오류가 발생했습니다: " + e.getMessage()));
+                .body(ApiResponse.error(com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 삭제")));
         }
     }
     
@@ -241,7 +245,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("평면도 존재 확인 실패 - schoolId: {}", schoolId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("평면도 확인 중 오류가 발생했습니다: " + e.getMessage()));
+                .body(ApiResponse.error(com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 확인")));
         }
     }
     
@@ -319,7 +323,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("평면도 데이터 조회 실패", e);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "평면도 데이터 조회 중 오류가 발생했습니다: " + e.getMessage());
+            error.put("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 데이터 조회"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
@@ -492,7 +496,7 @@ public class FloorPlanController {
                 
         } catch (Exception e) {
             logger.error("PPT 내보내기 실패 - schoolId: {}", schoolId, e);
-            String errorMessage = "PPT 파일 생성 중 오류가 발생했습니다: " + e.getMessage();
+            String errorMessage = com.inet.util.UserMessageUtils.toUserFriendly(e, "PPT 파일 생성");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(errorMessage.getBytes());
         }
@@ -543,30 +547,38 @@ public class FloorPlanController {
     /**
      * 미배치 교실 조회
      * GET /floorplan/api/schools/{schoolId}/unplaced-classrooms
+     * - Classroom 엔티티를 그대로 반환하면 school/devices(지연 로딩) 직렬화 시
+     *   Linux/배포 환경에서 LazyInitializationException 등으로 목록이 비어 보일 수 있음.
+     * - UnplacedClassroomDto / UnplacedClassroomsResponseDto로 Map 없이 DTO만 사용해 반환.
      */
     @GetMapping("/api/schools/{schoolId}/unplaced-classrooms")
     @ResponseBody
-    public ResponseEntity<Map<String, Object>> getUnplacedClassrooms(@PathVariable Long schoolId) {
-        Map<String, Object> response = new HashMap<>();
-        
+    public ResponseEntity<UnplacedClassroomsResponseDto> getUnplacedClassrooms(@PathVariable Long schoolId) {
         try {
             User user = getCurrentUser();
             if (user == null || !hasSchoolPermission(user, schoolId)) {
-                response.put("success", false);
-                response.put("message", "권한이 없습니다");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new UnplacedClassroomsResponseDto(false, "권한이 없습니다", null));
             }
             
             List<Classroom> unplaced = floorPlanService.getUnplacedClassrooms(schoolId);
-            response.put("success", true);
-            response.put("classrooms", unplaced);
-            return ResponseEntity.ok(response);
+            List<UnplacedClassroomDto> classroomsData = unplaced.stream()
+                .map(c -> new UnplacedClassroomDto(
+                    c.getClassroomId(),
+                    c.getRoomName(),
+                    c.getXCoordinate(),
+                    c.getYCoordinate(),
+                    c.getWidth(),
+                    c.getHeight(),
+                    c.getDisplayOrder()
+                ))
+                .collect(Collectors.toList());
+            return ResponseEntity.ok(new UnplacedClassroomsResponseDto(true, null, classroomsData));
             
         } catch (Exception e) {
             logger.error("미배치 교실 조회 실패 - schoolId: {}", schoolId, e);
-            response.put("success", false);
-            response.put("message", "조회 중 오류가 발생했습니다: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new UnplacedClassroomsResponseDto(false, com.inet.util.UserMessageUtils.toUserFriendly(e, "조회"), null));
         }
     }
     
@@ -664,7 +676,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("무선AP 조회 실패 - schoolId: {}", schoolId, e);
             response.put("success", false);
-            response.put("message", "조회 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "조회"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -694,7 +706,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("교실별 장비 조회 실패 - schoolId: {}", schoolId, e);
             response.put("success", false);
-            response.put("message", "조회 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "조회"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -726,7 +738,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("교실 장비 조회 실패 - classroomId: {}", classroomId, e);
             response.put("success", false);
-            response.put("message", "조회 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "조회"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -766,7 +778,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("자리 배치 저장 실패 - schoolId: {}, classroomId: {}", schoolId, classroomId, e);
             response.put("success", false);
-            response.put("message", "저장 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 저장"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -799,7 +811,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("자리 배치 조회 실패 - schoolId: {}, classroomId: {}", schoolId, classroomId, e);
             response.put("success", false);
-            response.put("message", "조회 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "조회"));
             response.put("layout", null);
             return ResponseEntity.ok(response);
         }
@@ -830,7 +842,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("캔버스 초기화 실패 - schoolId: {}", schoolId, e);
             response.put("success", false);
-            response.put("message", "초기화 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 초기화"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -927,7 +939,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("페이지별 요소 조회 실패 - schoolId: {}, pageNumber: {}", schoolId, pageNumber, e);
             response.put("success", false);
-            response.put("message", "요소 조회 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 요소 조회"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -972,7 +984,7 @@ public class FloorPlanController {
         } catch (Exception e) {
             logger.error("페이지 삭제 실패 - schoolId: {}, pageNumber: {}", schoolId, pageNumber, e);
             response.put("success", false);
-            response.put("message", "페이지 삭제 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "평면도 페이지 삭제"));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }

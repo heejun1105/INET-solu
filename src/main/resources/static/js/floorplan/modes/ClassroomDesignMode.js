@@ -574,7 +574,7 @@ export default class ClassroomDesignMode {
                         <i class="fas fa-door-open"></i> 현관
                     </button>
                     <button class="tool-btn" data-tool="stairs" title="계단">
-                        <i class="fas fa-stairs"></i> 계단
+                        <span class="stairs-tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><rect x="1" y="1" width="22" height="22"/><line x1="1" y1="5.4" x2="23" y2="5.4"/><line x1="1" y1="9.8" x2="23" y2="9.8"/><line x1="1" y1="14.2" x2="23" y2="14.2"/><line x1="1" y1="18.6" x2="23" y2="18.6"/></svg></span> 계단
                     </button>
                     <button class="tool-btn" data-tool="rectangle" title="사각형">
                         <i class="fas fa-square"></i> 사각형
@@ -1174,8 +1174,8 @@ export default class ClassroomDesignMode {
             return;
         }
         
-        // 도형은 mousedown/drag로 처리하므로 여기서는 제외
-        if (['rectangle', 'circle', 'line', 'dashed-line', 'entrance', 'stairs'].includes(this.currentTool)) {
+        // 도형은 mousedown/drag로 처리하므로 여기서는 제외 (계단은 클릭으로 생성)
+        if (['rectangle', 'circle', 'line', 'dashed-line', 'entrance'].includes(this.currentTool)) {
             console.log('📐 도형 도구는 mousedown으로 처리');
             return;
         }
@@ -1204,6 +1204,8 @@ export default class ClassroomDesignMode {
             this.createToilet(canvasPos.x, canvasPos.y);
         } else if (this.currentTool === 'elevator') {
             this.createElevator(canvasPos.x, canvasPos.y);
+        } else if (this.currentTool === 'stairs') {
+            this.createStairs(canvasPos.x, canvasPos.y);
         }
         
         console.log('✅ 요소 생성 완료');
@@ -1215,8 +1217,8 @@ export default class ClassroomDesignMode {
     handleCanvasMouseDown(e) {
         if (!this.currentTool) return;
         
-        // 도형 도구만 처리 (현관, 계단 포함)
-        if (!['rectangle', 'circle', 'line', 'dashed-line', 'entrance', 'stairs'].includes(this.currentTool)) {
+        // 도형 도구만 처리 (현관 포함, 계단은 클릭으로 생성)
+        if (!['rectangle', 'circle', 'line', 'dashed-line', 'entrance'].includes(this.currentTool)) {
             return;
         }
         
@@ -1531,30 +1533,167 @@ export default class ClassroomDesignMode {
         this.drawStartPos = { x, y };
     }
     
+    /** 직선/점선 각도 유도: 이 각도(°) 이내면 0°/45°/90° 등으로 스냅 */
+    static get LINE_ANGLE_SNAP_THRESHOLD() { return 5; }
+    /** 유도 대상 각도 (0, 45, 90, … 315) */
+    static get LINE_SNAP_ANGLES() { return [0, 45, 90, 135, 180, 225, 270, 315]; }
+    /** 직선/점선이 수평·수직면에 붙는 자석 거리 (캔버스 px) */
+    static get LINE_EDGE_SNAP_DISTANCE() { return 8; }
+    /** 수평/수직 판정 각도 (이 범위면 수평 또는 수직으로 간주) */
+    static get LINE_HV_ANGLE_THRESHOLD() { return 10; }
+
+    /**
+     * 스냅 대상 도형의 rect 목록 (같은 페이지, 직선 자석용)
+     * @returns {{ x: number, y: number, width: number, height: number }[]}
+     */
+    getSnappableRectsForLine() {
+        const app = window.floorPlanApp;
+        const currentPage = app?.currentPage ?? this.core.state?.currentPage ?? 1;
+        const rects = [];
+        for (const el of this.core.state.elements) {
+            const page = el.pageNumber ?? 1;
+            if (page !== currentPage) continue;
+            const type = el.elementType;
+            if (type === 'room' || type === 'building' || type === 'other_space' ||
+                type === 'elevator' || type === 'stairs' || type === 'toilet' || type === 'entrance') {
+                rects.push({
+                    x: el.xCoordinate ?? 0,
+                    y: el.yCoordinate ?? 0,
+                    width: el.width ?? 0,
+                    height: el.height ?? 0
+                });
+            } else if (type === 'shape' && el.shapeType !== 'line' && el.shapeType !== 'dashed-line') {
+                rects.push({
+                    x: el.xCoordinate ?? 0,
+                    y: el.yCoordinate ?? 0,
+                    width: el.width ?? 0,
+                    height: el.height ?? 0
+                });
+            }
+        }
+        return rects;
+    }
+
+    /**
+     * 직선/점선을 0°(수평)일 때 수평면에, 90°(수직)일 때 수직면에 스냅
+     * @returns {{ startX: number, startY: number, endX: number, endY: number }}
+     */
+    snapLineToEdges(startX, startY, endX, endY) {
+        const dx = endX - startX;
+        const dy = endY - startY;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        if (length < 1e-6) return { startX, startY, endX, endY };
+        let angleDeg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+        if (angleDeg > 180) angleDeg -= 360;
+        const dist = ClassroomDesignMode.LINE_EDGE_SNAP_DISTANCE;
+        const hvThreshold = ClassroomDesignMode.LINE_HV_ANGLE_THRESHOLD;
+        const rects = this.getSnappableRectsForLine();
+        const isHorizontal = Math.abs(angleDeg) <= hvThreshold || Math.abs(Math.abs(angleDeg) - 180) <= hvThreshold;
+        const isVertical = Math.abs(Math.abs(angleDeg) - 90) <= hvThreshold;
+        if (isHorizontal) {
+            const lineY = startY;
+            let bestEdge = null;
+            let bestDiff = dist + 1;
+            for (const r of rects) {
+                for (const edgeY of [r.y, r.y + r.height]) {
+                    const d = Math.abs(edgeY - lineY);
+                    if (d <= dist && d < bestDiff) {
+                        bestDiff = d;
+                        bestEdge = edgeY;
+                    }
+                }
+            }
+            if (bestEdge != null) {
+                return { startX, startY: bestEdge, endX, endY: bestEdge };
+            }
+        } else if (isVertical) {
+            const lineX = startX;
+            let bestEdge = null;
+            let bestDiff = dist + 1;
+            for (const r of rects) {
+                for (const edgeX of [r.x, r.x + r.width]) {
+                    const d = Math.abs(edgeX - lineX);
+                    if (d <= dist && d < bestDiff) {
+                        bestDiff = d;
+                        bestEdge = edgeX;
+                    }
+                }
+            }
+            if (bestEdge != null) {
+                return { startX: bestEdge, startY, endX: bestEdge, endY };
+            }
+        }
+        return { startX, startY, endX, endY };
+    }
+
+    /**
+     * 직선/점선: 자유 각도로 그리되, 0°/45°/90° 등에 가까우면 그 각도로 유도 (시작점과의 거리는 유지)
+     * @returns {{ x: number, y: number }}
+     */
+    snapLineEndToAngle(startX, startY, endX, endY) {
+        const dx = endX - startX;
+        const dy = endY - startY;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        if (length < 1e-6) return { x: endX, y: endY };
+        const angleRad = Math.atan2(dy, dx);
+        let angleDeg = (angleRad * 180 / Math.PI + 360) % 360;
+        const threshold = ClassroomDesignMode.LINE_ANGLE_SNAP_THRESHOLD;
+        const targets = ClassroomDesignMode.LINE_SNAP_ANGLES;
+        let best = null;
+        let bestDiff = 360;
+        for (const target of targets) {
+            let diff = Math.abs(angleDeg - target);
+            if (diff > 180) diff = 360 - diff;
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = target;
+            }
+        }
+        const useDeg = (best != null && bestDiff <= threshold) ? best : angleDeg;
+        const useRad = useDeg * Math.PI / 180;
+        return {
+            x: startX + length * Math.cos(useRad),
+            y: startY + length * Math.sin(useRad)
+        };
+    }
+
     /**
      * 도형 프리뷰 업데이트
      */
     updateShapePreview(x, y) {
         if (!this.drawStartPos) return;
         
-        const width = Math.abs(x - this.drawStartPos.x);
-        const height = Math.abs(y - this.drawStartPos.y);
+        let startX = this.drawStartPos.x;
+        let startY = this.drawStartPos.y;
+        let endX = x;
+        let endY = y;
+        if (this.currentTool === 'line' || this.currentTool === 'dashed-line') {
+            const angleSnapped = this.snapLineEndToAngle(startX, startY, x, y);
+            endX = angleSnapped.x;
+            endY = angleSnapped.y;
+            const edgeSnapped = this.snapLineToEdges(startX, startY, endX, endY);
+            startX = edgeSnapped.startX;
+            startY = edgeSnapped.startY;
+            endX = edgeSnapped.endX;
+            endY = edgeSnapped.endY;
+        }
         
-        // 선/점선의 경우 실제 드래그 방향 유지
+        const width = Math.abs(endX - startX);
+        const height = Math.abs(endY - startY);
+        
         const previewData = {
             shapeType: this.currentTool,
-            startX: this.drawStartPos.x,
-            startY: this.drawStartPos.y,
-            endX: x,
-            endY: y,
-            width: width,
-            height: height,
+            startX,
+            startY,
+            endX,
+            endY,
+            width,
+            height,
             borderColor: this.currentColor,
             borderWidth: this.currentLineWidth,
             backgroundColor: this.currentTool === 'line' || this.currentTool === 'dashed-line' ? 'transparent' : this.currentFillColor
         };
         
-        // 일반 도형은 정규화된 사각형 좌표로 조정
         if (this.currentTool !== 'line' && this.currentTool !== 'dashed-line') {
             previewData.startX = Math.min(this.drawStartPos.x, x);
             previewData.startY = Math.min(this.drawStartPos.y, y);
@@ -1572,12 +1711,25 @@ export default class ClassroomDesignMode {
     finishDrawingShape(x, y) {
         if (!this.drawStartPos) return;
         
-        const width = Math.abs(x - this.drawStartPos.x);
-        const height = Math.abs(y - this.drawStartPos.y);
-        
-        // 선/점선의 경우 선의 길이로 체크, 일반 도형은 width와 height 체크
+        let startX = this.drawStartPos.x;
+        let startY = this.drawStartPos.y;
+        let endX = x;
+        let endY = y;
         if (this.currentTool === 'line' || this.currentTool === 'dashed-line') {
-            // 선의 길이 계산 (피타고라스 정리)
+            const angleSnapped = this.snapLineEndToAngle(startX, startY, x, y);
+            endX = angleSnapped.x;
+            endY = angleSnapped.y;
+            const edgeSnapped = this.snapLineToEdges(startX, startY, endX, endY);
+            startX = edgeSnapped.startX;
+            startY = edgeSnapped.startY;
+            endX = edgeSnapped.endX;
+            endY = edgeSnapped.endY;
+        }
+        
+        const width = Math.abs(endX - startX);
+        const height = Math.abs(endY - startY);
+        
+        if (this.currentTool === 'line' || this.currentTool === 'dashed-line') {
             const lineLength = Math.sqrt(width * width + height * height);
             if (lineLength < 5) {
                 this.isDrawing = false;
@@ -1607,8 +1759,8 @@ export default class ClassroomDesignMode {
         
         const elementData = {
             shapeType: this.currentTool,
-            xCoordinate: Math.min(this.drawStartPos.x, x),
-            yCoordinate: Math.min(this.drawStartPos.y, y),
+            xCoordinate: Math.min(startX, endX),
+            yCoordinate: Math.min(startY, endY),
             width: width,
             height: height,
             borderColor: this.currentColor,
@@ -1618,12 +1770,11 @@ export default class ClassroomDesignMode {
             pageNumber: this.core.currentPage || 1  // 현재 페이지 설정
         };
         
-        // 선/점선의 경우 시작점과 끝점 저장
         if (this.currentTool === 'line' || this.currentTool === 'dashed-line') {
-            elementData.startX = this.drawStartPos.x;
-            elementData.startY = this.drawStartPos.y;
-            elementData.endX = x;
-            elementData.endY = y;
+            elementData.startX = startX;
+            elementData.startY = startY;
+            elementData.endX = endX;
+            elementData.endY = endY;
         }
         
         // 현관, 계단의 경우 전용 타입으로 생성
@@ -1637,8 +1788,8 @@ export default class ClassroomDesignMode {
             elementData.width = size;
             elementData.height = size;
             // 중앙을 기준으로 위치 조정
-            const centerX = (this.drawStartPos.x + x) / 2;
-            const centerY = (this.drawStartPos.y + y) / 2;
+            const centerX = (this.drawStartPos.x + endX) / 2;
+            const centerY = (this.drawStartPos.y + endY) / 2;
             elementData.xCoordinate = centerX - size / 2;
             elementData.yCoordinate = centerY - size / 2;
         } else if (this.currentTool === 'stairs') {

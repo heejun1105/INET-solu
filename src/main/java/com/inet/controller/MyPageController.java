@@ -123,7 +123,7 @@ public class MyPageController {
             redirectAttributes.addFlashAttribute("success", "정보가 성공적으로 수정되었습니다.");
             
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "정보 수정 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "정보 수정"));
         }
         
         return "redirect:/mypage";

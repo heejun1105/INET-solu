@@ -109,9 +109,9 @@ public class DeviceService {
         
         // IP 주소 중복 검증
         if (device.getIpAddress() != null && !device.getIpAddress().trim().isEmpty()) {
-            Optional<Device> existingDevice = deviceRepository.findByIpAddress(device.getIpAddress().trim());
-            if (existingDevice.isPresent()) {
-                Device existing = existingDevice.get();
+            List<Device> existingList = deviceRepository.findByIpAddress(device.getIpAddress().trim());
+            if (!existingList.isEmpty()) {
+                Device existing = existingList.get(0);
                 String locationInfo = existing.getClassroom() != null && existing.getClassroom().getRoomName() != null 
                     ? existing.getClassroom().getRoomName() 
                     : "위치 미지정";
@@ -165,16 +165,49 @@ public class DeviceService {
                     productName = "미지정";
                 }
                 
-                throw new RuntimeException("이미 있는 IP 주소입니다. IP: " + device.getIpAddress() + 
-                    ", 기존 장비 정보 - 위치: " + locationInfo + 
-                    ", 고유번호: " + uidInfo + 
-                    ", 관리번호: " + manageInfo + 
-                    ", 장비종류: " + deviceType + 
-                    ", 제품명: " + productName);
+                throw new RuntimeException("입력하신 IP 주소(" + device.getIpAddress() + ")는 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요. (기존 장비: 위치 " + locationInfo + ", 고유번호 " + uidInfo + ")");
             }
         }
         
-        return deviceRepository.save(device);
+        Device saved = deviceRepository.save(device);
+        updateSchoolIpFromDeviceIfNull(saved.getSchool(), saved.getIpAddress());
+        return saved;
+    }
+    
+    /** 장비 IP에서 세 번째 옥텟을 파싱해, 해당 학교의 ip가 null일 때만 School.ip에 반영 (IP 대장/엑셀용) */
+    private void updateSchoolIpFromDeviceIfNull(School school, String ipAddress) {
+        if (school == null || ipAddress == null || ipAddress.isBlank()) return;
+        if (school.getIp() != null) return;
+        if (!isValidIpAddressForThirdOctet(ipAddress)) return;
+        String[] parts = ipAddress.trim().split("\\.");
+        if (parts.length < 3) return;
+        try {
+            int thirdOctet = Integer.parseInt(parts[2]);
+            if (thirdOctet < 0 || thirdOctet > 255) return;
+            school.setIp(thirdOctet);
+            schoolRepository.save(school);
+            log.info("School {} ip set to {} from device IP {}", school.getSchoolId(), thirdOctet, ipAddress);
+        } catch (NumberFormatException e) {
+            log.warn("Could not parse third octet from IP: {}", ipAddress);
+        }
+    }
+    
+    private boolean isValidIpAddressForThirdOctet(String ipAddress) {
+        if (ipAddress == null || ipAddress.isEmpty()) return false;
+        if (!ipAddress.startsWith("10.")) return false;
+        String ipPattern = "^10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$";
+        if (!ipAddress.trim().matches(ipPattern)) return false;
+        if (ipAddress.matches(".*[ㄱ-ㅎㅏ-ㅣ가-힣].*") || ipAddress.toLowerCase().contains("usb")) return false;
+        String[] parts = ipAddress.trim().split("\\.");
+        try {
+            for (int i = 1; i < parts.length; i++) {
+                int part = Integer.parseInt(parts[i]);
+                if (part < 0 || part > 255) return false;
+            }
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        return true;
     }
     
     // Read
@@ -389,10 +422,10 @@ public class DeviceService {
         
         // IP 주소 중복 검증 (자기 자신 제외)
         if (updatedDevice.getIpAddress() != null && !updatedDevice.getIpAddress().trim().isEmpty()) {
-            Optional<Device> existingDevice = deviceRepository.findByIpAddressExcludingDevice(
+            List<Device> existingList = deviceRepository.findByIpAddressExcludingDevice(
                 updatedDevice.getIpAddress().trim(), updatedDevice.getDeviceId());
-            if (existingDevice.isPresent()) {
-                Device existing = existingDevice.get();
+            if (!existingList.isEmpty()) {
+                Device existing = existingList.get(0);
                 String locationInfo = existing.getClassroom() != null && existing.getClassroom().getRoomName() != null 
                     ? existing.getClassroom().getRoomName() 
                     : "위치 미지정";
@@ -446,17 +479,13 @@ public class DeviceService {
                     productName = "미지정";
                 }
                 
-                throw new RuntimeException("이미 있는 IP 주소입니다. IP: " + updatedDevice.getIpAddress() + 
-                    ", 기존 장비 정보 - 위치: " + locationInfo + 
-                    ", 고유번호: " + uidInfo + 
-                    ", 관리번호: " + manageInfo + 
-                    ", 장비종류: " + deviceType + 
-                    ", 제품명: " + productName);
+                throw new RuntimeException("입력하신 IP 주소(" + updatedDevice.getIpAddress() + ")는 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요. (기존 장비: 위치 " + locationInfo + ", 고유번호 " + uidInfo + ")");
             }
         }
         
         // 히스토리 저장 후에 장비 저장
         deviceRepository.save(updatedDevice);
+        updateSchoolIpFromDeviceIfNull(updatedDevice.getSchool(), updatedDevice.getIpAddress());
     }
     
     /**
@@ -556,6 +585,11 @@ public class DeviceService {
         return deviceRepository.findBySchoolSchoolId(schoolId);
     }
 
+    /** 해당 학교에 장비 데이터가 1건 이상 있는지 여부 */
+    public boolean hasDevices(Long schoolId) {
+        return schoolId != null && deviceRepository.countBySchoolSchoolId(schoolId) > 0;
+    }
+
     public Optional<byte[]> generateDeviceLedgerExcel(Long schoolId) {
         List<Device> devices = findBySchool(schoolId);
         if (devices.isEmpty()) {
@@ -643,10 +677,17 @@ public class DeviceService {
     }
 
     public void exportToExcel(List<Device> devices, OutputStream outputStream) throws IOException {
-        exportToExcel(devices, outputStream, null);
+        exportToExcel(devices, outputStream, null, null);
     }
     
     public void exportToExcel(List<Device> devices, OutputStream outputStream, Map<Long, String> inspectionStatuses) throws IOException {
+        exportToExcel(devices, outputStream, inspectionStatuses, null);
+    }
+    
+    /**
+     * @param filteredSchoolName 필터링된 학교명 (1행 제목용). null이면 첫 번째 장비의 학교명 사용
+     */
+    public void exportToExcel(List<Device> devices, OutputStream outputStream, Map<Long, String> inspectionStatuses, String filteredSchoolName) throws IOException {
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("장비 목록");
         
@@ -698,9 +739,11 @@ public class DeviceService {
         dataStyle.setBorderRight(BorderStyle.THIN);
         dataStyle.setWrapText(true); // 셀에 맞춤
         
-        // 학교명 가져오기 - 첫 번째 장비의 학교명 사용 (또는 선택된 학교명)
+        // 학교명: 필터링된 학교명 우선, 없으면 첫 번째 장비의 학교명
         String schoolName = "학교";
-        if (!devices.isEmpty() && devices.get(0).getSchool() != null && devices.get(0).getSchool().getSchoolName() != null) {
+        if (filteredSchoolName != null && !filteredSchoolName.isEmpty()) {
+            schoolName = filteredSchoolName;
+        } else if (!devices.isEmpty() && devices.get(0).getSchool() != null && devices.get(0).getSchool().getSchoolName() != null) {
             schoolName = devices.get(0).getSchool().getSchoolName();
         }
         
@@ -1410,6 +1453,9 @@ public class DeviceService {
                     } catch (Exception e) {
                         // 선택적 정보이므로 진행
                     }
+                    if (ipAddress != null && !ipAddress.isBlank()) {
+                        updateSchoolIpFromDeviceIfNull(school, ipAddress);
+                    }
                     
                     // 교실 처리 (필수 항목)
                     String classroomName = null;
@@ -1516,10 +1562,9 @@ public class DeviceService {
                             uidCate = "ET"; // 타입 정보가 없는 경우 기본값
                         }
                     } else {
-                        // UID 정보가 직접 입력된 경우 그대로 사용
+                        // UID 정보가 직접 입력된 경우 카테고리로만 사용 (새 번호 부여 시 참고)
                         uidCate = uidInfo;
                     }
-                    
                     
                     // Device 객체 생성 및 기본 정보 설정
                     Device device = new Device();
@@ -1537,8 +1582,16 @@ public class DeviceService {
                     device.setManage(manage);
                     device.setOperator(operator);
                     
-                    // 디바이스 저장 전에 UID 설정 - 필수 데이터 확인
-                    if (uidCate != null && !uidCate.trim().isEmpty()) {
+                    // 1열 비어있음 → 새 번호 부여 대상 / 1열에 고유번호 있음 → 그대로 사용 (실패 시 사유를 알림으로 전달)
+                    if (uidInfo != null && !uidInfo.trim().isEmpty()) {
+                        try {
+                            Uid uid = uidService.findOrCreateByDisplayUidString(school, uidInfo.trim());
+                            device.setUid(uid);
+                            devices.add(device);
+                        } catch (IllegalArgumentException e) {
+                            throw new IllegalArgumentException(rowCount + "번째 행 고유번호 오류: " + e.getMessage());
+                        }
+                    } else if (uidCate != null && !uidCate.trim().isEmpty()) {
                         devices.add(device);
                     } else {
                         log.warn("{}번째 행 UID 카테고리 누락으로 장비 무시", rowCount);
@@ -1549,8 +1602,9 @@ public class DeviceService {
                 }
             }
             
-            // 모든 디바이스 추출 후, UID 카테고리별로 그룹화하여 ID 번호 부여
+            // 고유번호가 아직 없는 디바이스만 UID 카테고리별로 그룹화하여 새 번호 부여
             Map<String, List<Device>> devicesByCate = devices.stream()
+                    .filter(device -> device.getUid() == null)
                     .collect(Collectors.groupingBy(device -> {
                         // Device에 설정된 UID 카테고리 얻기
                         String type = device.getType();
@@ -1597,9 +1651,9 @@ public class DeviceService {
                     // 현재 연도의 뒤 두 자리 가져오기 (예: 2025 -> 25)
                     int currentYear = LocalDate.now().getYear() % 100;
                     
-                    // 제조일자가 있다면 해당 년도를 사용, 없으면 "xx" 사용
+                    // 제조일자가 있다면 해당 년도를 2자리로 사용 (예: 2008 -> "08"), 없으면 "xx"
                     String mfgYear = device.getPurchaseDate() != null ? 
-                            String.valueOf(device.getPurchaseDate().getYear() % 100) : 
+                            String.format("%02d", device.getPurchaseDate().getYear() % 100) : 
                             "xx";
                     
                     // 학교 PK를 2자리 문자열로 변환 (예: 2 -> "02")
@@ -1845,9 +1899,9 @@ public class DeviceService {
         // 현재 연도의 뒤 두 자리 가져오기 (예: 2025 -> 25)
         int currentYear = LocalDate.now().getYear() % 100;
         
-        // 제조일자가 있다면 해당 년도를 사용, 없으면 "xx" 사용
+        // 제조일자가 있다면 해당 년도를 2자리로 사용 (예: 2008 -> "08"), 없으면 "xx"
         String mfgYear = device.getPurchaseDate() != null ? 
-                String.valueOf(device.getPurchaseDate().getYear() % 100) : 
+                String.format("%02d", device.getPurchaseDate().getYear() % 100) : 
                 "xx";
         
         Uid uid;
@@ -1879,9 +1933,9 @@ public class DeviceService {
         // 현재 연도의 뒤 두 자리 가져오기 (예: 2025 -> 25)
         int currentYear = LocalDate.now().getYear() % 100;
         
-        // 제조일자가 있다면 해당 년도를 사용, 없으면 "xx" 사용
+        // 제조일자가 있다면 해당 년도를 2자리로 사용 (예: 2008 -> "08"), 없으면 "xx"
         String mfgYear = device.getPurchaseDate() != null ? 
-                String.valueOf(device.getPurchaseDate().getYear() % 100) : 
+                String.format("%02d", device.getPurchaseDate().getYear() % 100) : 
                 "xx";
         
         Uid uid;

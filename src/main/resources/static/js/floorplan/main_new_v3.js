@@ -51,6 +51,10 @@ class FloorPlanApp {
         
         // 첫 진입 여부 확인 (localStorage 사용)
         this.isFirstEntry = !localStorage.getItem('floorplan_has_entered');
+
+        // 모든 페이지 요소 캐시 (장비보기 모드 등에서 재사용)
+        this.allPageElementsCache = null;
+        this.allPageElementsCacheSchoolId = null;
         
         console.log('🚀 FloorPlanApp 초기화');
     }
@@ -528,17 +532,15 @@ class FloorPlanApp {
     }
     
     /**
-     * 학교 목록 로드
+     * 학교 목록 로드 (Thymeleaf에서 주입된 schools 변수 사용)
      */
     async loadSchools() {
         try {
-            // Thymeleaf에서 주입된 schools 변수 사용
             if (typeof schools !== 'undefined') {
                 this.schools = schools;
             } else {
                 this.schools = [];
             }
-            
             console.log('학교 목록 로드:', this.schools.length);
         } catch (error) {
             console.error('학교 목록 로드 오류:', error);
@@ -971,6 +973,10 @@ class FloorPlanApp {
             
             // result가 객체인 경우와 boolean인 경우 모두 처리
             if (result === true || (result && result.success === true)) {
+                // 저장 후에는 서버 상태가 바뀌므로 모든 페이지 요소 캐시 무효화
+                this.allPageElementsCache = null;
+                this.allPageElementsCacheSchoolId = null;
+                
                 this.uiManager.showNotification('저장 완료', 'success');
             } else {
                 const errorMsg = (result && result.message) ? result.message : '알 수 없는 오류';
@@ -1789,6 +1795,10 @@ class FloorPlanApp {
         
         console.log('🏫 워크스페이스 학교 변경:', schoolId);
         
+        // 학교 변경 시 모든 페이지 요소 캐시 무효화
+        this.allPageElementsCache = null;
+        this.allPageElementsCacheSchoolId = null;
+        
         // 1. 이전 평면도 완전 초기화
         console.log('🧹 이전 평면도 초기화 시작');
         
@@ -2350,6 +2360,10 @@ class FloorPlanApp {
             
             // 10. 평면도 데이터 저장 (알림은 여기서 통합 표시)
             const result = await this.dataSyncManager.save(this.currentSchoolId, false); // 내부 알림 비활성화
+            
+            // 저장 후에는 서버 상태가 변경되었으므로 페이지 요소 캐시 무효화
+            this.allPageElementsCache = null;
+            this.allPageElementsCacheSchoolId = null;
             
             // 11. core.state.elements를 원래대로 복원 (현재 페이지 요소만)
             this.core.state.elements = originalElements;
@@ -3293,6 +3307,12 @@ class FloorPlanApp {
         if (!this.currentSchoolId) {
             return [];
         }
+
+        // 캐시가 있고 같은 학교라면 서버 호출 없이 재사용
+        if (this.allPageElementsCache && this.allPageElementsCacheSchoolId === this.currentSchoolId) {
+            console.log(`📥 모든 페이지 요소 캐시 사용: ${this.allPageElementsCache.length}개`);
+            return this.allPageElementsCache;
+        }
         
         try {
             const allElements = [];
@@ -3330,6 +3350,9 @@ class FloorPlanApp {
             }
             
             console.log(`📥 모든 페이지 요소 로드 완료: ${allElements.length}개`);
+            // 캐시에 저장해 다음 장비보기 전환 시 재사용
+            this.allPageElementsCache = allElements;
+            this.allPageElementsCacheSchoolId = this.currentSchoolId;
             return allElements;
         } catch (error) {
             console.error('모든 페이지 요소 로드 오류:', error);

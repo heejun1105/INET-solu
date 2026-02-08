@@ -28,4 +28,16 @@ public interface WirelessApRepository extends JpaRepository<WirelessAp, Long> {
     @Modifying
     @Query("UPDATE WirelessAp w SET w.location = NULL WHERE w.school.schoolId = :schoolId")
     int updateClassroomToNullBySchoolId(@Param("schoolId") Long schoolId);
+
+    // MAC 주소 중복 여부 (수정 시 자기 자신 제외)
+    boolean existsByMacAddressIgnoreCaseAndAPIdNot(String macAddress, Long apId);
+
+    // MAC 주소 중복 여부 (등록 시 전체 조회)
+    boolean existsByMacAddressIgnoreCase(String macAddress);
+
+    // 새 라벨 번호 중복 여부 (수정 시 자기 자신 제외)
+    boolean existsByNewLabelNumberIgnoreCaseAndAPIdNot(String newLabelNumber, Long apId);
+
+    // 새 라벨 번호 중복 여부 (등록 시 전체 조회)
+    boolean existsByNewLabelNumberIgnoreCase(String newLabelNumber);
 } 

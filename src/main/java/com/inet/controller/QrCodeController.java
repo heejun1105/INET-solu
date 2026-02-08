@@ -1,5 +1,6 @@
 package com.inet.controller;
 
+import com.inet.dto.SchoolDto;
 import com.inet.entity.Feature;
 import com.inet.entity.School;
 import com.inet.entity.User;
@@ -21,6 +22,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 import com.google.zxing.WriterException;
 
 @Controller
@@ -50,9 +52,10 @@ public class QrCodeController {
             return "redirect:/";
         }
         
-        // 모든 학교 목록 가져오기
-        List<School> schools = schoolService.getAllSchools();
-        model.addAttribute("schools", schools);
+        // 모든 학교 목록 가져오기 (뷰에는 DTO 전달)
+        model.addAttribute("schools", schoolService.getAllSchools().stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 권한 정보 추가 (네비게이션 바용)
         permissionHelper.addPermissionAttributes(user, model);
@@ -86,7 +89,7 @@ public class QrCodeController {
                     .body(resource);
                     
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("errorMessage", "QR 코드 엑셀 파일 생성 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "QR 코드 엑셀 파일 생성"));
             return ResponseEntity.badRequest().build();
         }
     }
@@ -117,7 +120,7 @@ public class QrCodeController {
                     .body(resource);
                     
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("errorMessage", "데이터 엑셀 파일 생성 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "데이터 엑셀 파일 생성"));
             return ResponseEntity.badRequest().build();
         }
     }
@@ -151,7 +154,7 @@ public class QrCodeController {
                     .body(resource);
                     
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("errorMessage", "QR 코드 엑셀 파일 생성 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "QR 코드 엑셀 파일 생성"));
             return ResponseEntity.badRequest().build();
         }
     }
@@ -185,7 +188,7 @@ public class QrCodeController {
                     .body(resource);
                     
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("errorMessage", "데이터 엑셀 파일 생성 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "데이터 엑셀 파일 생성"));
             return ResponseEntity.badRequest().build();
         }
     }

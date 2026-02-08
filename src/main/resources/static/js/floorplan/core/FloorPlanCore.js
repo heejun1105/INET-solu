@@ -16,6 +16,8 @@ export default class FloorPlanCore {
     static MAX_ZOOM = 5.0;
     static DEFAULT_ZOOM = 1.0;
     static DEFAULT_GRID_SIZE = 20;
+    /** 스냅 시 좌표 단위 (0.1 = 0.1 단위로 이동/배치) */
+    static DEFAULT_SNAP_GRANULARITY = 0.1;
     static DEFAULT_CANVAS_WIDTH = 16000;  // 캔버스 기본 너비
     static DEFAULT_CANVAS_HEIGHT = 12000;  // 캔버스 기본 높이
     
@@ -45,8 +47,9 @@ export default class FloorPlanCore {
             panX: options.panX || 0,
             panY: options.panY || 0,
             
-            // 그리드 설정
+            // 그리드 설정 (gridSize = 그리드선 간격, snapGranularity = 스냅 단위)
             gridSize: options.gridSize || FloorPlanCore.DEFAULT_GRID_SIZE,
+            snapGranularity: options.snapGranularity ?? FloorPlanCore.DEFAULT_SNAP_GRANULARITY,
             showGrid: options.showGrid !== false,
             snapToGrid: options.snapToGrid !== false,
             
@@ -1073,7 +1076,7 @@ export default class FloorPlanCore {
     }
     
     /**
-     * 계단 렌더링 (zigzag 패턴만)
+     * 계단 렌더링 (EV와 동일한 테두리 굵기 + 내부 가로선은 얇게, 5단 계단 형태)
      */
     renderStairs(ctx, element) {
         const x = element.xCoordinate;
@@ -1081,32 +1084,24 @@ export default class FloorPlanCore {
         const w = element.width || 140;
         const h = element.height || 180;
         
-        // Zigzag 계단 패턴만 그리기 (배경/외곽선 없음)
         const borderColor = element.borderColor || '#000000';
-        const borderWidth = element.borderWidth || 2;
-        const stepCount = 7;  // 계단 단수
+        const borderWidth = element.borderWidth || 2;  // EV와 동일 (기존: * 2 제거)
         
         ctx.strokeStyle = borderColor;
-        ctx.lineWidth = borderWidth * 2;
+        ctx.lineWidth = borderWidth;
+        ctx.strokeRect(x, y, w, h);
         
-        ctx.beginPath();
-        // 왼쪽 하단에서 시작
-        ctx.moveTo(x, y + h);
-        
-        for (let i = 0; i < stepCount; i++) {
-            const stepX = x + (w / stepCount) * i;
-            const stepY = y + h - (h / stepCount) * i;
-            const nextStepX = x + (w / stepCount) * (i + 1);
-            
-            // 위로
-            ctx.lineTo(stepX, stepY);
-            // 오른쪽으로
-            ctx.lineTo(nextStepX, stepY);
+        // 내부 가로선 4개 (5등분) — EV 대비 덜 굵게 보이도록 얇게
+        const innerLineWidth = Math.max(1, borderWidth * 0.5);
+        ctx.lineWidth = innerLineWidth;
+        const lineCount = 4;
+        for (let i = 1; i <= lineCount; i++) {
+            const lineY = y + (h / (lineCount + 1)) * i;
+            ctx.beginPath();
+            ctx.moveTo(x, lineY);
+            ctx.lineTo(x + w, lineY);
+            ctx.stroke();
         }
-        
-        // 마지막 단 연결
-        ctx.lineTo(x + w, y);
-        ctx.stroke();
     }
     
     /**
@@ -1653,11 +1648,10 @@ export default class FloorPlanCore {
         if (!this.state.snapToGrid) {
             return { x, y };
         }
-        
-        const gridSize = this.state.gridSize;
+        const g = this.state.snapGranularity ?? this.state.gridSize;
         return {
-            x: Math.round(x / gridSize) * gridSize,
-            y: Math.round(y / gridSize) * gridSize
+            x: Math.round(x / g) * g,
+            y: Math.round(y / g) * g
         };
     }
     

@@ -137,7 +137,8 @@
             font-weight: 700;
             color: #ffffff;
             margin: 0;
-            flex: 1;
+            flex: 1 1 auto;
+            min-width: 8em;
         }
 
         .section-header-modern i {
@@ -155,10 +156,10 @@
             margin-left: auto;
         }
 
-        /* 통계 그리드 */
+        /* 통계 그리드 - 태블릿/PC: 한 줄에 4개 */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -731,7 +732,8 @@
             font-weight: 700;
             color: #ffffff;
             margin: 0;
-            flex: 1;
+            flex: 1 1 auto;
+            min-width: 8em;
         }
 
         .classroom-actions {
@@ -890,7 +892,7 @@
         }
 
         .modal-header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            background: #2563eb;
             color: white;
             padding: 1.5rem 2rem;
             border-radius: 20px 20px 0 0;
@@ -1142,8 +1144,15 @@
             margin-top: 1rem;
         }
 
-        /* 반응형 디자인 */
-        @media (max-width: 768px) {
+        /* 반응형 디자인 - 태블릿: 교실 목록 한 행에 2카드 */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            .classroom-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* 모바일: 768px 미만 */
+        @media (max-width: 767px) {
             .classroom-container {
                 padding: 0 1rem;
             }
@@ -1152,6 +1161,7 @@
                 font-size: 2.2rem;
             }
 
+            /* 모바일: 한 행에 2개씩 */
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -1226,8 +1236,9 @@
                 font-size: 1.8rem;
             }
 
+            /* 작은 모바일에서도 한 행에 2개 유지 */
             .stats-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, 1fr);
             }
         }
 
@@ -1344,10 +1355,10 @@
                 </div>
                 
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> 저장
                     </button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
                 </div>
             </form>
         </div>
@@ -1592,8 +1603,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
                     <button type="submit" class="btn btn-primary">저장</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
                 </div>
             </form>
         </div>
@@ -1622,8 +1633,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeMergeModal()">취소</button>
                     <button type="submit" class="btn btn-warning">병합하기</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeMergeModal()">취소</button>
                 </div>
             </form>
         </div>

@@ -10,8 +10,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Collator;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -89,15 +93,21 @@ public class SchoolPermissionService {
         return schoolPermissionRepository.findSchoolIdsByUserId(user.getId());
     }
     
-    // 사용자가 접근 가능한 학교 목록 조회
+    // 사용자가 접근 가능한 학교 목록 조회 (가나다순 정렬)
     public List<School> getAccessibleSchools(User user) {
         // 관리자도 권한관리에서 지정한 학교만 접근 가능
         List<Long> schoolIds = getAccessibleSchoolIds(user);
-        return schoolRepository.findAllById(schoolIds);
+        Collator collator = Collator.getInstance(Locale.KOREAN);
+        return schoolRepository.findAllById(schoolIds).stream()
+                .sorted(Comparator.comparing(School::getSchoolName, collator))
+                .collect(Collectors.toList());
     }
     
-    // 모든 학교 목록 조회 (권한 관리용)
+    // 모든 학교 목록 조회 (권한 관리용, 가나다순 정렬)
     public List<School> getAllSchools() {
-        return schoolRepository.findAll();
+        Collator collator = Collator.getInstance(Locale.KOREAN);
+        return schoolRepository.findAll().stream()
+                .sorted(Comparator.comparing(School::getSchoolName, collator))
+                .collect(Collectors.toList());
     }
 } 

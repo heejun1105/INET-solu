@@ -295,8 +295,10 @@
                 <div class="subtitle">기존 무선 AP 정보를 수정해 주세요</div>
             </div>
 
-            <form th:action="@{/wireless-ap/modify}" th:object="${wirelessAp}" method="post">
+            <form th:action="@{/wireless-ap/modify}" th:object="${wirelessAp}" method="post" id="modifyForm">
                 <input type="hidden" th:field="*{APId}" />
+                <input type="hidden" name="returnUrl" th:value="${returnUrl}">
+                <input type="hidden" id="currentLocationId" th:value="${wirelessAp.location != null ? wirelessAp.location.classroomId : ''}">
 
                 <!-- 기본 정보 섹션 -->
                 <div class="form-card">
@@ -311,7 +313,7 @@
                                 <i class="fas fa-school"></i>
                                 학교 선택
                             </label>
-                            <select name="schoolId" required>
+                            <select name="schoolId" id="schoolSelect" required>
                                 <option value="">학교를 선택하세요</option>
                                 <option th:each="school : ${schools}" 
                                         th:value="${school.schoolId}" 
@@ -322,13 +324,18 @@
                         </div>
                         
                         <div class="form-group-modern">
-                            <label>
+                            <label class="required">
                                 <i class="fas fa-map-marker-alt"></i>
-                                설치장소
+                                설치 위치 (교실)
                             </label>
-                            <input type="text" name="locationName" required placeholder="교실명 또는 설치 장소"
-                                   th:value="${wirelessAp.location != null ? wirelessAp.location.roomName : ''}">
-                            <div class="form-help">예: 1-1교실, 교무실, 회의실</div>
+                            <select name="locationId" id="classroomSelect">
+                                <option value="">먼저 학교를 선택하세요</option>
+                            </select>
+                            <div id="locationNameDirectWrap" style="display: none; margin-top: 8px;">
+                                <input type="text" name="locationName" id="locationNameDirect" placeholder="교실명 또는 설치 장소 직접 입력"
+                                       th:value="${wirelessAp.location != null ? wirelessAp.location.roomName : ''}">
+                            </div>
+                            <div class="form-help">교실을 선택하거나 '직접입력'을 선택해 입력하세요.</div>
                         </div>
 
                         <div class="form-group-modern">
@@ -347,7 +354,8 @@
                                 <i class="fas fa-tag"></i>
                                 새 라벨 번호
                             </label>
-                            <input type="text" th:field="*{newLabelNumber}" placeholder="새 라벨 번호">
+                            <input type="text" th:field="*{newLabelNumber}" id="newLabelNumber" placeholder="새 라벨 번호">
+                            <span id="newLabelNumberDuplicateMsg" class="duplicate-msg" style="display: none; color: #dc2626; font-size: 0.875rem; margin-top: 4px;">이미 사용 중인 라벨 번호입니다.</span>
                         </div>
 
                         <div class="form-group-modern">
@@ -398,7 +406,8 @@
                                 <i class="fas fa-network-wired"></i>
                                 MAC 주소
                             </label>
-                            <input type="text" th:field="*{macAddress}" placeholder="MAC 주소를 입력하세요">
+                            <input type="text" th:field="*{macAddress}" id="macAddress" placeholder="MAC 주소를 입력하세요">
+                            <span id="macAddressDuplicateMsg" class="duplicate-msg" style="display: none; color: #dc2626; font-size: 0.875rem; margin-top: 4px;">이미 사용 중인 MAC 주소입니다.</span>
                         </div>
                     </div>
                 </div>
@@ -443,7 +452,7 @@
                         <i class="fas fa-save"></i>
                         수정 완료
                     </button>
-                    <a href="/wireless-ap/list" class="btn-modern btn-secondary-modern">
+                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/wireless-ap/list}" class="btn-modern btn-secondary-modern">
                         <i class="fas fa-list"></i>
                         목록으로
                     </a>
@@ -455,25 +464,147 @@
     <div th:replace="~{fragments/footer :: footer}"></div>
     
     <script>
-        // 폼 유효성 검사
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const schoolSelect = document.querySelector('select[name="schoolId"]');
-            const locationName = document.querySelector('input[name="locationName"]').value.trim();
-            
+        function updateClassrooms() {
+            const schoolSelect = document.getElementById('schoolSelect');
+            const classroomSelect = document.getElementById('classroomSelect');
+            const currentLocationIdEl = document.getElementById('currentLocationId');
+            const currentLocationId = currentLocationIdEl ? currentLocationIdEl.value : '';
+            const schoolId = schoolSelect.value;
+
+            classroomSelect.innerHTML = '<option value="">로딩 중...</option>';
+
+            if (schoolId) {
+                fetch('/wireless-ap/api/classrooms/' + schoolId)
+                    .then(function(r) {
+                        if (!r.ok) throw new Error('Network error');
+                        return r.json();
+                    })
+                    .then(function(classrooms) {
+                        classroomSelect.innerHTML = '<option value="">교실을 선택하세요</option>';
+                        var foundCurrent = false;
+                        if (classrooms && classrooms.length > 0) {
+                            classrooms.forEach(function(c) {
+                                const opt = document.createElement('option');
+                                opt.value = c.classroomId;
+                                opt.textContent = c.roomName;
+                                if (String(c.classroomId) === String(currentLocationId)) {
+                                    opt.selected = true;
+                                    foundCurrent = true;
+                                }
+                                classroomSelect.appendChild(opt);
+                            });
+                        }
+                        const directOpt = document.createElement('option');
+                        directOpt.value = '__direct__';
+                        directOpt.textContent = '직접입력';
+                        if (!foundCurrent && (document.getElementById('locationNameDirect').value || currentLocationId)) directOpt.selected = true;
+                        classroomSelect.appendChild(directOpt);
+                        toggleDirectInput();
+                    })
+                    .catch(function(err) {
+                        console.error(err);
+                        classroomSelect.innerHTML = '<option value="">교실 목록을 불러올 수 없습니다</option><option value="__direct__">직접입력</option>';
+                        toggleDirectInput();
+                    });
+            } else {
+                classroomSelect.innerHTML = '<option value="">먼저 학교를 선택하세요</option><option value="__direct__">직접입력</option>';
+                toggleDirectInput();
+            }
+        }
+
+        function toggleDirectInput() {
+            const classroomSelect = document.getElementById('classroomSelect');
+            const wrap = document.getElementById('locationNameDirectWrap');
+            const directInput = document.getElementById('locationNameDirect');
+            const isDirect = classroomSelect.value === '__direct__';
+            wrap.style.display = isDirect ? 'block' : 'none';
+            directInput.removeAttribute('required');
+            classroomSelect.removeAttribute('required');
+            if (isDirect) {
+                directInput.setAttribute('required', 'required');
+                classroomSelect.removeAttribute('name');
+                directInput.name = 'locationName';
+            } else {
+                classroomSelect.name = 'locationId';
+                directInput.removeAttribute('name');
+                directInput.value = '';
+            }
+        }
+
+        document.getElementById('schoolSelect').addEventListener('change', function() {
+            document.getElementById('currentLocationId').value = '';
+            updateClassrooms();
+        });
+
+        document.getElementById('classroomSelect').addEventListener('change', function() {
+            toggleDirectInput();
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateClassrooms();
+        });
+
+        // MAC 주소 / 새 라벨 번호 중복 체크 (수정: excludeApId = 현재 AP ID)
+        function checkDuplicateModify(type, value, msgEl) {
+            if (!value || !value.trim()) {
+                if (msgEl) msgEl.style.display = 'none';
+                return;
+            }
+            var excludeInput = document.querySelector('input[name="APId"]');
+            var excludeApId = excludeInput ? excludeInput.value : '';
+            var url = '/wireless-ap/api/check-' + (type === 'mac' ? 'mac' : 'label') + '?value=' + encodeURIComponent(value.trim());
+            if (excludeApId) url += '&excludeApId=' + encodeURIComponent(excludeApId);
+            fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+                if (msgEl) msgEl.style.display = data.duplicate ? 'inline' : 'none';
+            }).catch(function() { if (msgEl) msgEl.style.display = 'none'; });
+        }
+        document.getElementById('macAddress').addEventListener('blur', function() {
+            checkDuplicateModify('mac', this.value, document.getElementById('macAddressDuplicateMsg'));
+        });
+        document.getElementById('newLabelNumber').addEventListener('blur', function() {
+            checkDuplicateModify('label', this.value, document.getElementById('newLabelNumberDuplicateMsg'));
+        });
+
+        document.getElementById('modifyForm').addEventListener('submit', function(e) {
+            const macMsg = document.getElementById('macAddressDuplicateMsg');
+            const labelMsg = document.getElementById('newLabelNumberDuplicateMsg');
+            const macDup = macMsg && macMsg.style.display === 'inline';
+            const labelDup = labelMsg && labelMsg.style.display === 'inline';
+            if (macDup || labelDup) {
+                e.preventDefault();
+                var msg = '중복된 값이 있습니다.\n';
+                if (macDup && labelDup) msg += '· MAC 주소\n· 새 라벨 번호';
+                else if (macDup) msg += '· MAC 주소';
+                else msg += '· 새 라벨 번호';
+                msg += '\n\n위 항목을 확인해주세요.';
+                alert(msg);
+                return false;
+            }
+
+            const schoolSelect = document.getElementById('schoolSelect');
+            const classroomSelect = document.getElementById('classroomSelect');
+            const directInput = document.getElementById('locationNameDirect');
+            const isDirect = classroomSelect.value === '__direct__';
+
             if (!schoolSelect.value) {
                 e.preventDefault();
                 alert('학교를 선택해주세요.');
                 return false;
             }
-            
-            if (!locationName) {
-                e.preventDefault();
-                alert('설치장소는 필수 입력 항목입니다.');
-                return false;
+            if (isDirect) {
+                if (!directInput.value.trim()) {
+                    e.preventDefault();
+                    alert('설치 위치를 입력해주세요.');
+                    return false;
+                }
+            } else {
+                if (!classroomSelect.value) {
+                    e.preventDefault();
+                    alert('교실을 선택하거나 직접입력을 선택해주세요.');
+                    return false;
+                }
             }
         });
-        
-
     </script>
 </body>
 </html> 

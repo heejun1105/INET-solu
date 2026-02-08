@@ -191,6 +191,18 @@
             color: white;
         }
 
+        .btn-danger-modern {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger-modern:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+            color: white;
+        }
+
 
 
         /* 학교 목록 카드 */
@@ -327,8 +339,14 @@
             }
         }
 
-        /* 반응형 디자인 */
-        @media (max-width: 768px) {
+        /* 반응형 디자인 - 태블릿: 학교 목록 한 행에 2카드 */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            .schools-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 767px) {
             .main-container {
                 padding: 0 1rem;
             }
@@ -354,6 +372,14 @@
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 0.5rem;
+            }
+
+            /* 모바일: 장비 목록 버튼 - 아이콘 숨기고 글자만 표시 */
+            .school-item .btn-primary-modern {
+                font-size: 0.875rem;
+            }
+            .school-item .btn-primary-modern i {
+                display: none;
             }
         }
 
@@ -432,9 +458,7 @@
                 
                 <!-- 학교 목록 -->
                 <div th:if="${!#lists.isEmpty(schools)}" class="schools-grid">
-                    <a th:each="school : ${schools}" 
-                       th:href="@{/device/list(schoolId=${school.schoolId})}" 
-                       class="school-item school-link">
+                    <div th:each="school : ${schools}" class="school-item">
                         <div class="school-header">
                             <div class="school-name">
                                 <i class="fas fa-school"></i>
@@ -450,11 +474,24 @@
                             IP: <span th:text="${school.ip}">192.168.1.1</span>
                         </div>
                         
-                        <div class="school-action-hint">
-                            <i class="fas fa-arrow-right"></i>
-                            <span>장비 목록 보기</span>
+                        <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+                            <a th:href="@{/device/list(schoolId=${school.schoolId})}" 
+                               class="btn-modern btn-primary-modern" 
+                               style="flex: 1; justify-content: center; text-decoration: none;">
+                                <i class="fas fa-list"></i>
+                                장비 목록
+                            </a>
+                            <form th:action="@{/school/delete/{id}(id=${school.schoolId})}" 
+                                  method="post" 
+                                  style="flex: 0 0 auto; margin: 0;"
+                                  onsubmit="return confirm('정말로 이 학교를 삭제하시겠습니까?\n\n⚠️ 주의: 학교에 연결된 모든 데이터(장비, 교실, 운영자 등)가 함께 삭제될 수 있습니다.');">
+                                <button type="submit" class="btn-modern btn-danger-modern">
+                                    <i class="fas fa-trash"></i>
+                                    삭제
+                                </button>
+                            </form>
                         </div>
-                    </a>
+                    </div>
                 </div>
             </div>
         </div>

@@ -315,6 +315,19 @@
     font-size: 18px;
 }
 
+/* 계단 도구 아이콘 (사각형+가로선 4개) - 다른 아이콘과 동일 크기 */
+.tool-btn .stairs-tool-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+}
+.tool-btn .stairs-tool-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
 /* 스타일 컨트롤 */
 .style-controls {
     display: flex;

@@ -727,6 +727,47 @@ public class PPTExportService {
         return new BoundingBox(minX, minY, maxX, maxY);
     }
     
+    /** 인접 도형 경계 일치를 위한 캔버스 좌표 스냅 그리드 (같은 경계는 동일 PPT 좌표로) */
+    private static final double BOUNDARY_SNAP_GRID = 0.01;
+
+    private static double snapToGrid(double value) {
+        return Math.round(value / BOUNDARY_SNAP_GRID) * BOUNDARY_SNAP_GRID;
+    }
+
+    /**
+     * 인접 도형의 경계가 PPT에서 일치하도록, 캔버스 좌표를 그리드에 스냅한 뒤
+     * 좌·상과 우·하 경계를 반올림하여 사각형 (x, y, width, height) 를 계산합니다.
+     * (스냅으로 부동소수점 오차로 인한 1픽셀 갈라짐 방지)
+     */
+    private Rectangle toPptRectAligned(double canvasX, double canvasY, double canvasW, double canvasH,
+                                       double scale, double offsetX, double offsetY) {
+        double x1 = snapToGrid(canvasX);
+        double y1 = snapToGrid(canvasY);
+        double x2 = snapToGrid(canvasX + canvasW);
+        double y2 = snapToGrid(canvasY + canvasH);
+        int left   = (int) Math.round((x1 - this.currentBoundsMinX) * scale + offsetX);
+        int right  = (int) Math.round((x2 - this.currentBoundsMinX) * scale + offsetX);
+        int top    = (int) Math.round((y1 - this.currentBoundsMinY) * scale + offsetY);
+        int bottom = (int) Math.round((y2 - this.currentBoundsMinY) * scale + offsetY);
+        int width  = Math.max(1, right - left);
+        int height = Math.max(1, bottom - top);
+        return new Rectangle(left, top, width, height);
+    }
+
+    /**
+     * 테두리가 경계 중앙에 그려질 때 인접 도형 사이 여백을 없애기 위해
+     * 사각형을 선 두께(pt)의 절반만큼 안쪽으로 줄입니다.
+     */
+    private Rectangle insetRectForStroke(Rectangle rect, double lineWidthPt) {
+        int half = (int) Math.round(lineWidthPt / 2.0);
+        if (half <= 0) return rect;
+        int x = rect.x + half;
+        int y = rect.y + half;
+        int w = Math.max(1, rect.width - 2 * half);
+        int h = Math.max(1, rect.height - 2 * half);
+        return new Rectangle(x, y, w, h);
+    }
+
     /**
      * 평면도 요소를 슬라이드에 추가 (동적 스케일 적용)
      */
@@ -779,12 +820,13 @@ public class PPTExportService {
      * 교실 도형 생성 (동적 스케일 적용)
      */
     private void createRoomShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // 좌표 변환 (동적 스케일 및 오프셋 적용)
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 1000.0;
+        double h = element.getHeight() != null ? element.getHeight() : 1000.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         // element_data에서 추가 정보 파싱
         Map<String, Object> elementData = parseElementData(element.getElementData());
@@ -820,16 +862,16 @@ public class PPTExportService {
             bgColor = new Color(245, 245, 245); // 기본 연한 회색
         }
         
+        // 스케일이 작아도 선이 보이도록 최소값 조정 (0.2pt)
+        double roomLineWidth = Math.max(0.2, borderThickness * scale);
+        // 인접 도형 사이 여백 제거: 테두리가 경계 중앙에 그려지므로 도형을 선 두께의 절반만큼 안쪽으로
+        rect = insetRectForStroke(rect, roomLineWidth);
         // 사각형 도형 생성
         XSLFAutoShape shape = slide.createAutoShape();
         shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
-        shape.setAnchor(new Rectangle(x, y, width, height));
-        
-        // 테두리 설정 (스케일에 비례)
-        shape.setLineColor(parseColor(borderColor));
-        // 스케일이 작아도 선이 보이도록 최소값 조정 (0.2pt)
-        double roomLineWidth = Math.max(0.2, borderThickness * scale);
+        shape.setAnchor(new Rectangle(rect.x, rect.y, rect.width, rect.height));
         shape.setLineWidth(roomLineWidth);
+        shape.setLineColor(parseColor(borderColor));
         
         // 배경색 설정
         shape.setFillColor(bgColor);
@@ -842,12 +884,13 @@ public class PPTExportService {
      * 건물 도형 생성 (동적 스케일 적용)
      */
     private void createBuildingShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // 좌표 변환 (동적 스케일 및 오프셋 적용)
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 1000.0;
+        double h = element.getHeight() != null ? element.getHeight() : 1000.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         // element_data에서 건물 정보 파싱
         Map<String, Object> elementData = parseElementData(element.getElementData());
@@ -882,18 +925,15 @@ public class PPTExportService {
             bgColor = new Color(219, 234, 254); // 기본 연한 파란색
         }
         
+        // 스케일이 작아도 선이 보이도록 최소값 조정 (0.2pt)
+        double buildingLineWidth = Math.max(0.2, borderThickness * scale);
+        rect = insetRectForStroke(rect, buildingLineWidth);
         // 사각형 도형 생성
         XSLFAutoShape shape = slide.createAutoShape();
         shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
-        shape.setAnchor(new Rectangle(x, y, width, height));
-        
-        // 테두리 설정 (스케일에 비례)
+        shape.setAnchor(new Rectangle(rect.x, rect.y, rect.width, rect.height));
         shape.setLineColor(parseColor(borderColor));
-        // 스케일이 작아도 선이 보이도록 최소값 조정 (0.2pt)
-        double buildingLineWidth = Math.max(0.2, borderThickness * scale);
         shape.setLineWidth(buildingLineWidth);
-        
-        // 배경색 설정
         shape.setFillColor(bgColor);
         
         // 건물 내부 텍스트는 표시하지 않음
@@ -901,22 +941,77 @@ public class PPTExportService {
     
     /**
      * 도형 생성 (사각형, 원, 선, 화살표) - 동적 스케일 적용
+     * 직선/점선은 startX,startY ~ endX,endY 로 그려 평면도와 동일한 기울기 유지
      */
     private void createCustomShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // 좌표 변환 (동적 스케일 및 오프셋 적용)
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
-        
-        // element_data에서 도형 정보 파싱
         Map<String, Object> elementData = parseElementData(element.getElementData());
         String shapeType = (String) elementData.getOrDefault("shapeType", "rectangle");
         String color = (String) elementData.getOrDefault("color", "#000000");
         String borderColor = (String) elementData.getOrDefault("borderColor", color);
-        
-        // borderWidth (JavaScript에서 사용) 또는 borderThickness 또는 thickness 우선순위로 확인
+        boolean isDashed = shapeType.equals("dashed-line");
+
+        // 직선/점선: startX,startY ~ endX,endY 사용 (유도·자석 적용된 최종 좌표)
+        if ("line".equals(shapeType) || "dashed-line".equals(shapeType)) {
+            Double xCoord = element.getXCoordinate();
+            Double yCoord = element.getYCoordinate();
+            Double wCoord = element.getWidth();
+            double defX = xCoord != null ? xCoord.doubleValue() : 0.0;
+            double defY = yCoord != null ? yCoord.doubleValue() : 0.0;
+            double defW = wCoord != null ? wCoord.doubleValue() : 100.0;
+            double sx = element.getStartX() != null ? element.getStartX() : extractDouble(elementData.get("startX"), defX);
+            double sy = element.getStartY() != null ? element.getStartY() : extractDouble(elementData.get("startY"), defY);
+            double ex = element.getEndX() != null ? element.getEndX() : extractDouble(elementData.get("endX"), defX + defW);
+            double ey = element.getEndY() != null ? element.getEndY() : extractDouble(elementData.get("endY"), defY);
+            if (sx == ex && sy == ey) {
+                ex = sx + (element.getWidth() != null ? element.getWidth() : 100);
+                ey = sy;
+            }
+            int pptSx = (int) Math.round((snapToGrid(sx) - this.currentBoundsMinX) * scale + offsetX);
+            int pptSy = (int) Math.round((snapToGrid(sy) - this.currentBoundsMinY) * scale + offsetY);
+            int pptEx = (int) Math.round((snapToGrid(ex) - this.currentBoundsMinX) * scale + offsetX);
+            int pptEy = (int) Math.round((snapToGrid(ey) - this.currentBoundsMinY) * scale + offsetY);
+            String lineWidthStr = null;
+            if (elementData.containsKey("borderWidth")) {
+                Object o = elementData.get("borderWidth");
+                lineWidthStr = o instanceof Number ? String.valueOf(o) : (o != null ? o.toString() : null);
+            }
+            if (lineWidthStr == null && elementData.containsKey("borderThickness")) lineWidthStr = String.valueOf(elementData.get("borderThickness"));
+            if (lineWidthStr == null) lineWidthStr = "2";
+            double lineWidth = Math.max(0.2, Double.parseDouble(lineWidthStr) * scale);
+            java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
+            path.moveTo(pptSx, pptSy);
+            path.lineTo(pptEx, pptEy);
+            XSLFFreeformShape linePath = slide.createFreeform();
+            linePath.setPath(path);
+            linePath.setLineColor(parseColor(borderColor));
+            linePath.setLineWidth(lineWidth);
+            linePath.setFillColor(null);
+            if (isDashed) {
+                try {
+                    org.openxmlformats.schemas.presentationml.x2006.main.CTShape ctShape = (org.openxmlformats.schemas.presentationml.x2006.main.CTShape) linePath.getXmlObject();
+                    if (ctShape != null && ctShape.getSpPr() != null) {
+                        org.openxmlformats.schemas.drawingml.x2006.main.CTLineProperties lineProps = ctShape.getSpPr().getLn();
+                        if (lineProps != null) {
+                            org.openxmlformats.schemas.drawingml.x2006.main.CTPresetLineDashProperties presetDash = org.openxmlformats.schemas.drawingml.x2006.main.CTPresetLineDashProperties.Factory.newInstance();
+                            presetDash.setVal(org.openxmlformats.schemas.drawingml.x2006.main.STPresetLineDashVal.DASH);
+                            lineProps.setPrstDash(presetDash);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[점선 도형] 점선 스타일 설정 실패: {}", e.getMessage());
+                }
+            }
+            return;
+        }
+
+        double w = element.getWidth() != null ? element.getWidth() : 100.0;
+        double h = element.getHeight() != null ? element.getHeight() : 100.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
+
         String lineWidthStr = null;
         if (elementData.containsKey("borderWidth")) {
             Object borderWidthObj = elementData.get("borderWidth");
@@ -933,29 +1028,18 @@ public class PPTExportService {
             lineWidthStr = String.valueOf(elementData.get("thickness"));
         }
         if (lineWidthStr == null) {
-            lineWidthStr = "2"; // 기본값
+            lineWidthStr = "2";
         }
-        
         double lineWidth = Double.parseDouble(lineWidthStr);
-        
-        // 배경색 가져오기
         String bgColorStr = (String) elementData.getOrDefault("backgroundColor", null);
         Color bgColor = null;
         if (bgColorStr != null && !bgColorStr.equals("transparent") && !bgColorStr.isEmpty()) {
             bgColor = parseColor(bgColorStr);
         }
-        
         XSLFAutoShape shape = slide.createAutoShape();
-        
-        // 도형 타입에 따라 설정
-        boolean isDashed = shapeType.equals("dashed-line");
         switch (shapeType) {
             case "circle":
                 shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.ELLIPSE);
-                break;
-            case "line":
-            case "dashed-line":
-                shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.LINE);
                 break;
             case "arrow":
                 shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RIGHT_ARROW);
@@ -965,47 +1049,17 @@ public class PPTExportService {
                 shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
                 break;
         }
-        
         shape.setAnchor(new Rectangle(x, y, width, height));
-        
-        // 선 색상 및 두께 설정 (스케일에 비례)
         shape.setLineColor(parseColor(borderColor));
-        // 스케일이 작아도 선이 보이도록 최소값 조정 (0.2pt)
         double customLineWidth = Math.max(0.2, lineWidth * scale);
         shape.setLineWidth(customLineWidth);
-        
-        // 점선 스타일 처리
-        if (isDashed) {
-            // 점선 스타일 설정 (XML 객체에 직접 접근)
-            try {
-                // XSLFAutoShape의 XML 객체는 CTShape
-                org.openxmlformats.schemas.presentationml.x2006.main.CTShape ctShape = 
-                    (org.openxmlformats.schemas.presentationml.x2006.main.CTShape) shape.getXmlObject();
-                if (ctShape != null && ctShape.getSpPr() != null) {
-                    org.openxmlformats.schemas.drawingml.x2006.main.CTLineProperties lineProps = 
-                        ctShape.getSpPr().getLn();
-                    if (lineProps != null) {
-                        // 점선 스타일 설정 (DASH)
-                        org.openxmlformats.schemas.drawingml.x2006.main.CTPresetLineDashProperties presetDash = 
-                            org.openxmlformats.schemas.drawingml.x2006.main.CTPresetLineDashProperties.Factory.newInstance();
-                        presetDash.setVal(org.openxmlformats.schemas.drawingml.x2006.main.STPresetLineDashVal.DASH);
-                        lineProps.setPrstDash(presetDash);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("[점선 도형] 점선 스타일 설정 실패: {}", e.getMessage());
-            }
-        }
-        
-        // 선/화살표는 배경색 없음
-        if (shapeType.equals("line") || shapeType.equals("arrow") || isDashed) {
+        if (shapeType.equals("arrow")) {
             shape.setFillColor(null);
         } else {
-            // 사각형/원은 배경색 설정 (없으면 투명)
             if (bgColor != null) {
                 shape.setFillColor(bgColor);
             } else {
-            shape.setFillColor(new Color(255, 255, 255, 0));
+                shape.setFillColor(new Color(255, 255, 255, 0));
             }
         }
     }
@@ -1014,12 +1068,13 @@ public class PPTExportService {
      * 기타공간 도형 생성 (동적 스케일 적용)
      */
     private void createOtherSpaceShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // 좌표 변환 (동적 스케일 및 오프셋 적용)
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 500.0;
+        double h = element.getHeight() != null ? element.getHeight() : 500.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         // element_data에서 공간 정보 파싱
         Map<String, Object> elementData = parseElementData(element.getElementData());
@@ -1051,14 +1106,18 @@ public class PPTExportService {
             bgColor = getOtherSpaceColor(spaceType);
         }
         
+        // 테두리 굵기 설정 (스케일에 비례)
+        double lineWidth = 2.0;
+        if (borderThicknessStr != null && !borderThicknessStr.isEmpty()) {
+            lineWidth = Double.parseDouble(borderThicknessStr);
+        }
+        double otherSpaceLineWidth = Math.max(0.2, lineWidth * scale);
+        rect = insetRectForStroke(rect, otherSpaceLineWidth);
         // 사각형 도형 생성
         XSLFAutoShape shape = slide.createAutoShape();
         shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
-        shape.setAnchor(new Rectangle(x, y, width, height));
-        
+        shape.setAnchor(new Rectangle(rect.x, rect.y, rect.width, rect.height));
         shape.setFillColor(bgColor);
-        
-        // 테두리 색상 설정
         Color lineColor = null;
         if (borderColorStr != null && !borderColorStr.isEmpty()) {
             lineColor = parseColor(borderColorStr);
@@ -1066,14 +1125,6 @@ public class PPTExportService {
             lineColor = darkenColor(bgColor, 0.3);
         }
         shape.setLineColor(lineColor);
-        
-        // 테두리 굵기 설정 (스케일에 비례)
-        double lineWidth = 2.0;
-        if (borderThicknessStr != null && !borderThicknessStr.isEmpty()) {
-            lineWidth = Double.parseDouble(borderThicknessStr);
-        }
-        // 스케일이 작아도 선이 보이도록 최소값 조정 (0.2pt)
-        double otherSpaceLineWidth = Math.max(0.2, lineWidth * scale);
         shape.setLineWidth(otherSpaceLineWidth);
         
         // 텍스트 추가
@@ -1119,11 +1170,13 @@ public class PPTExportService {
      * 이름박스 생성 (동적 스케일 적용)
      */
     private void createNameBoxShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 80.0;
+        double h = element.getHeight() != null ? element.getHeight() : 40.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         Map<String, Object> elementData = parseElementData(element.getElementData());
         String label = (String) elementData.getOrDefault("label", "");
@@ -1221,11 +1274,13 @@ public class PPTExportService {
      * (기존 사각형/배경 제거)
      */
     private void createEquipmentCardShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 80.0;
+        double h = element.getHeight() != null ? element.getHeight() : 40.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         Map<String, Object> elementData = parseElementData(element.getElementData());
         String deviceType = (String) elementData.getOrDefault("deviceType", "장비");
@@ -1260,11 +1315,13 @@ public class PPTExportService {
      * 화장실 생성 (동적 스케일 적용)
      */
     private void createToiletShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 180.0;
+        double h = element.getHeight() != null ? element.getHeight() : 180.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         XSLFAutoShape shape = slide.createAutoShape();
         shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
@@ -1300,11 +1357,13 @@ public class PPTExportService {
      * 엘리베이터 생성 (동적 스케일 적용)
      */
     private void createElevatorShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 180.0;
+        double h = element.getHeight() != null ? element.getHeight() : 180.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         XSLFAutoShape shape = slide.createAutoShape();
         shape.setShapeType(org.apache.poi.sl.usermodel.ShapeType.RECT);
@@ -1340,11 +1399,13 @@ public class PPTExportService {
      * 현관 생성 (동적 스케일 적용) - JavaScript와 동일한 로직
      */
     private void createEntranceShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 140.0;
+        double h = element.getHeight() != null ? element.getHeight() : 180.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         // element_data에서 회전 정보 파싱
         Map<String, Object> elementData = parseElementData(element.getElementData());
@@ -1459,62 +1520,41 @@ public class PPTExportService {
     }
     
     /**
-     * 계단 생성 (동적 스케일 적용) - JavaScript와 동일한 로직 (단일 Path)
+     * 계단 생성 (동적 스케일 적용) - EV와 동일한 테두리 굵기 + 내부 4개 가로선 (웹과 동일)
      */
     private void createStairsShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 140.0;
+        double h = element.getHeight() != null ? element.getHeight() : 180.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
-        // element_data에서 borderWidth 파싱
-        Map<String, Object> elementData = parseElementData(element.getElementData());
-        double borderWidth = 2.0;
-        if (elementData.containsKey("borderWidth")) {
-            Object borderWidthObj = elementData.get("borderWidth");
-            if (borderWidthObj instanceof Number) {
-                borderWidth = ((Number) borderWidthObj).doubleValue();
-            } else if (borderWidthObj instanceof String) {
-                try {
-                    borderWidth = Double.parseDouble((String) borderWidthObj);
-                } catch (NumberFormatException e) {
-                    borderWidth = 2.0;
-                }
-            }
-        }
-        // JavaScript: lineWidth = borderWidth * 2
-        double lineWidth = Math.max(0.2, borderWidth * 2.0 * scale);
+        // EV와 동일한 선 굵기 (웹에서 계단이 EV보다 커 보이던 현상 반영)
+        double lineWidth = Math.max(0.2, 2.0 * scale);
         
-        // JavaScript와 동일: stepCount = 7
-        int stepCount = 7;
-        
-        // Path2D를 사용하여 단일 Path로 계단 그리기
-        // JavaScript: ctx.moveTo(x, y + h) - 왼쪽 하단에서 시작
+        // 1) 외곽 사각형
         java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
-        path.moveTo(x, y + height);
+        path.moveTo(x, y);
+        path.lineTo(x + width, y);
+        path.lineTo(x + width, y + height);
+        path.lineTo(x, y + height);
+        path.closePath();
         
-        // JavaScript와 동일한 알고리즘
-        for (int i = 0; i < stepCount; i++) {
-            double stepX = x + (width / (double)stepCount) * i;
-            double stepY = y + height - (height / (double)stepCount) * i;
-            double nextStepX = x + (width / (double)stepCount) * (i + 1);
-            
-            // 위로 (JavaScript: ctx.lineTo(stepX, stepY))
-            path.lineTo(stepX, stepY);
-            // 오른쪽으로 (JavaScript: ctx.lineTo(nextStepX, stepY))
-            path.lineTo(nextStepX, stepY);
+        // 2) 내부 가로선 4개 (5등분)
+        int lineCount = 4;
+        for (int i = 1; i <= lineCount; i++) {
+            double lineY = y + (height / (double)(lineCount + 1)) * i;
+            path.moveTo(x, lineY);
+            path.lineTo(x + width, lineY);
         }
         
-        // 마지막 단 연결 (JavaScript: ctx.lineTo(x + w, y))
-        path.lineTo(x + width, y);
-        
-        // XSLFFreeformShape로 단일 Path 생성
         XSLFFreeformShape stairsPath = slide.createFreeform();
         stairsPath.setPath(path);
         stairsPath.setLineColor(Color.BLACK);
         stairsPath.setLineWidth(lineWidth);
-        stairsPath.setFillColor(null); // 배경 없음
+        stairsPath.setFillColor(null);
     }
     
     /**
@@ -1557,11 +1597,13 @@ public class PPTExportService {
             deviceCounts.put(cate, deviceCounts.getOrDefault(cate, 0) + 1);
         }
         
-        // 교실 좌표 변환 (동적 스케일 및 오프셋 적용)
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int roomX = (int)((roomElement.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int roomY = (int)((roomElement.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int roomH = (int)(roomElement.getHeight() * scale);
+        // 교실 좌표 변환 (경계 정렬 반올림으로 인접 도형과 일치)
+        double rw = roomElement.getWidth() != null ? roomElement.getWidth() : 1000.0;
+        double rh = roomElement.getHeight() != null ? roomElement.getHeight() : 1000.0;
+        Rectangle roomRect = toPptRectAligned(roomElement.getXCoordinate(), roomElement.getYCoordinate(), rw, rh, scale, offsetX, offsetY);
+        int roomX = roomRect.x;
+        int roomY = roomRect.y;
+        int roomH = roomRect.height;
         
         // 이름박스 위치 찾기 (겹침 방지 - 프론트엔드와 동일 로직)
         // element_data에서 parentElementId를 확인하거나 getParentElementId() 사용
@@ -1633,8 +1675,8 @@ public class PPTExportService {
         
         String label = labelBuilder.toString();
         
-        // 텍스트 위치: 교실 높이의 3/5 지점 (프론트엔드와 동일)
-        int roomWidth = (int)(roomElement.getWidth() * scale);
+        // 텍스트 위치: 교실 높이의 3/5 지점 (프론트엔드와 동일, 경계 정렬된 교실 크기 사용)
+        int roomWidth = roomRect.width;
         int textY = roomY + (int)(roomH * 3.0 / 5.0);
         int textX = roomX;
         int textWidth = roomWidth;
@@ -2547,11 +2589,13 @@ public class PPTExportService {
      * MDF(IDF) 생성 (동적 스케일 적용) - 사각형
      */
     private void createMdfIdfShape(XSLFSlide slide, FloorPlanElement element, double scale, double offsetX, double offsetY) throws Exception {
-        // PPT 좌표 = (원본 좌표 - bounds.minX) * scale + offsetX
-        int x = (int)((element.getXCoordinate() - this.currentBoundsMinX) * scale + offsetX);
-        int y = (int)((element.getYCoordinate() - this.currentBoundsMinY) * scale + offsetY);
-        int width = (int)(element.getWidth() * scale);
-        int height = (int)(element.getHeight() * scale);
+        double w = element.getWidth() != null ? element.getWidth() : 150.0;
+        double h = element.getHeight() != null ? element.getHeight() : 150.0;
+        Rectangle rect = toPptRectAligned(element.getXCoordinate(), element.getYCoordinate(), w, h, scale, offsetX, offsetY);
+        int x = rect.x;
+        int y = rect.y;
+        int width = rect.width;
+        int height = rect.height;
         
         Map<String, Object> elementData = parseElementData(element.getElementData());
         

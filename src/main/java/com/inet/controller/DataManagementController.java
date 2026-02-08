@@ -1,5 +1,6 @@
 package com.inet.controller;
 
+import com.inet.dto.SchoolDto;
 import com.inet.service.DataManagementService;
 import com.inet.service.SchoolService;
 import com.inet.entity.School;
@@ -13,6 +14,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import com.inet.entity.Feature;
 import com.inet.entity.User;
 import com.inet.service.PermissionService;
@@ -92,7 +94,9 @@ public class DataManagementController {
         if (user == null) {
             return "redirect:/";
         }
-        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user));
+        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
@@ -195,8 +199,7 @@ public class DataManagementController {
             
             redirectAttributes.addFlashAttribute("message", message);
         } catch (RuntimeException e) {
-            // 서비스에서 사용자 친화적인 메시지가 전달됨
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "데이터 삭제"));
         } catch (Exception e) {
             logger.error("Unexpected error during data deletion: {}", e.getMessage(), e);
             redirectAttributes.addFlashAttribute("error", "시스템 오류가 발생했습니다. 관리자에게 문의해주세요.");

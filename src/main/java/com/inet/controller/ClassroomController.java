@@ -1,6 +1,5 @@
 package com.inet.controller;
 
-import com.fasterxml.jackson.annotation.JsonView;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -8,11 +7,12 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import com.inet.dto.ClassroomDto;
+import com.inet.dto.SchoolDto;
 import com.inet.entity.Classroom;
 import com.inet.entity.School;
 import com.inet.service.ClassroomService;
 import com.inet.service.SchoolService;
-import com.inet.config.Views;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,7 +117,9 @@ public class ClassroomController {
         }
         log.info("교실 관리 페이지 요청. schoolId: {}", schoolId);
         
-        List<School> schools = schoolPermissionService.getAccessibleSchools(user);
+        List<SchoolDto> schools = schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList());
         model.addAttribute("schools", schools);
         log.info("전체 학교 수: {}", schools.size());
         
@@ -162,8 +164,16 @@ public class ClassroomController {
             }
             
             model.addAttribute("selectedSchoolId", schoolId);
-            model.addAttribute("classrooms", classrooms);
-            model.addAttribute("duplicateGroups", duplicateGroups);
+            List<ClassroomDto> classroomDtos = classrooms.stream()
+                    .map(c -> new ClassroomDto(c.getClassroomId(), c.getRoomName(), c.getXCoordinate(), c.getYCoordinate(), c.getWidth(), c.getHeight(), c.getDisplayOrder()))
+                    .collect(Collectors.toList());
+            Map<String, List<ClassroomDto>> duplicateGroupsDto = duplicateGroups.entrySet().stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey,
+                            e -> e.getValue().stream()
+                                    .map(c -> new ClassroomDto(c.getClassroomId(), c.getRoomName(), c.getXCoordinate(), c.getYCoordinate(), c.getWidth(), c.getHeight(), c.getDisplayOrder()))
+                                    .collect(Collectors.toList())));
+            model.addAttribute("classrooms", classroomDtos);
+            model.addAttribute("duplicateGroups", duplicateGroupsDto);
             
             log.info("교실 {}개, 중복 그룹 {}개 로드됨", classrooms.size(), duplicateGroups.size());
             
@@ -205,7 +215,7 @@ public class ClassroomController {
             
         } catch (Exception e) {
             log.error("교실 추가 중 오류: ", e);
-            redirectAttributes.addFlashAttribute("error", "교실 추가 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 추가"));
         }
         
         return "redirect:/classroom/manage?schoolId=" + schoolId;
@@ -236,7 +246,7 @@ public class ClassroomController {
             
         } catch (Exception e) {
             log.error("교실 수정 중 오류: ", e);
-            redirectAttributes.addFlashAttribute("error", "교실 수정 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 수정"));
         }
         
         return "redirect:/classroom/manage?schoolId=" + schoolId;
@@ -362,10 +372,10 @@ public class ClassroomController {
             
         } catch (IllegalStateException e) {
             log.warn("교실 삭제 실패 - 사용 중: ", e);
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 삭제"));
         } catch (Exception e) {
             log.error("교실 삭제 중 오류: ", e);
-            redirectAttributes.addFlashAttribute("error", "교실 삭제 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 삭제"));
         }
         
         return "redirect:/classroom/manage?schoolId=" + schoolId;
@@ -399,7 +409,7 @@ public class ClassroomController {
             
         } catch (Exception e) {
             log.error("교실 병합 중 오류: ", e);
-            redirectAttributes.addFlashAttribute("error", "교실 병합 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 병합"));
         }
         
         return "redirect:/classroom/manage?schoolId=" + schoolId;
@@ -429,27 +439,40 @@ public class ClassroomController {
             return response;
         } catch (Exception e) {
             log.error("교실 사용 현황 조회 중 오류: ", e);
-            // 에러 발생 시 기본값 반환
             return Map.of(
                 "classroomId", classroomId,
                 "deviceCount", 0,
                 "wirelessApCount", 0,
                 "totalCount", 0,
                 "isEmpty", true,
-                "error", e.getMessage()
+                "error", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 사용 현황 조회")
             );
         }
     }
 
     /**
-     * 교실 중복 그룹 조회 API
+     * 교실 중복 그룹 조회 API (API 1순위: DTO 반환)
      */
     @GetMapping("/api/duplicates/{schoolId}")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public Map<String, List<Classroom>> getDuplicateClassrooms(@PathVariable Long schoolId) {
+    public Map<String, List<ClassroomDto>> getDuplicateClassrooms(@PathVariable Long schoolId) {
         log.info("교실 중복 그룹 조회 API 호출. schoolId: {}", schoolId);
-        return classroomService.findDuplicateClassrooms(schoolId);
+        Map<String, List<Classroom>> raw = classroomService.findDuplicateClassrooms(schoolId);
+        Map<String, List<ClassroomDto>> result = new HashMap<>();
+        for (Map.Entry<String, List<Classroom>> e : raw.entrySet()) {
+            result.put(e.getKey(), e.getValue().stream()
+                    .map(c -> ClassroomDto.builder()
+                            .classroomId(c.getClassroomId())
+                            .roomName(c.getRoomName())
+                            .xCoordinate(c.getXCoordinate())
+                            .yCoordinate(c.getYCoordinate())
+                            .width(c.getWidth())
+                            .height(c.getHeight())
+                            .displayOrder(c.getDisplayOrder())
+                            .build())
+                    .collect(Collectors.toList()));
+        }
+        return result;
     }
 
     /**
@@ -533,7 +556,7 @@ public class ClassroomController {
             log.error("모든 중복 그룹 제외 중 오류: ", e);
             return Map.of(
                 "success", false,
-                "message", "그룹 제외 중 오류가 발생했습니다: " + e.getMessage()
+                "message", com.inet.util.UserMessageUtils.toUserFriendly(e, "그룹 제외")
             );
         }
     }
@@ -619,18 +642,26 @@ public class ClassroomController {
     }
 
     /**
-     * 학교별 교실 목록 조회 API (평면도용)
+     * 학교별 교실 목록 조회 API (평면도용, API 1순위: DTO 반환)
      */
     @GetMapping("/api/school/{schoolId}/classrooms")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public List<Classroom> getClassroomsBySchool(@PathVariable Long schoolId) {
+    public List<ClassroomDto> getClassroomsBySchool(@PathVariable Long schoolId) {
         log.info("학교별 교실 목록 조회 API 호출. schoolId: {}", schoolId);
-        
         try {
             List<Classroom> classrooms = classroomService.findBySchoolId(schoolId);
             log.info("학교 {}의 교실 {}개 조회됨", schoolId, classrooms.size());
-            return classrooms;
+            return classrooms.stream()
+                    .map(c -> ClassroomDto.builder()
+                            .classroomId(c.getClassroomId())
+                            .roomName(c.getRoomName())
+                            .xCoordinate(c.getXCoordinate())
+                            .yCoordinate(c.getYCoordinate())
+                            .width(c.getWidth())
+                            .height(c.getHeight())
+                            .displayOrder(c.getDisplayOrder())
+                            .build())
+                    .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("학교별 교실 목록 조회 중 오류: ", e);
             return new ArrayList<>();
@@ -661,7 +692,7 @@ public class ClassroomController {
         } catch (IllegalArgumentException e) {
             log.error("교실 순서 업데이트 중 오류: {}", e.getMessage());
             return ResponseEntity.badRequest()
-                .body(Map.of("success", false, "message", e.getMessage()));
+                .body(Map.of("success", false, "message", com.inet.util.UserMessageUtils.toUserFriendly(e, "교실 순서 업데이트")));
         } catch (Exception e) {
             log.error("교실 순서 업데이트 중 오류: ", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

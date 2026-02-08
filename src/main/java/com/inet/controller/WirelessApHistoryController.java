@@ -1,5 +1,6 @@
 package com.inet.controller;
 
+import com.inet.dto.SchoolDto;
 import com.inet.entity.School;
 import com.inet.entity.User;
 import com.inet.entity.WirelessApHistory;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/wireless-ap/history")
@@ -116,19 +118,21 @@ public class WirelessApHistoryController {
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         
-        // 학교 목록 조회
-        List<School> schools = schoolService.getAllSchools();
-        model.addAttribute("schools", schools);
+        // 학교 목록 조회 (뷰에는 DTO 전달)
+        model.addAttribute("schools", schoolService.getAllSchools().stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 학교가 선택된 경우에만 수정내역 조회
         if (schoolId != null) {
-            School selectedSchool = schoolService.getSchoolById(schoolId).orElse(null);
+            School school = schoolService.getSchoolById(schoolId).orElse(null);
+            SchoolDto selectedSchool = school != null ? new SchoolDto(school.getSchoolId(), school.getSchoolName(), school.getIp()) : null;
             if (selectedSchool != null) {
                 model.addAttribute("selectedSchool", selectedSchool);
                 model.addAttribute("selectedSchoolId", schoolId);
             }
             
-            if (selectedSchool != null) {
+            if (school != null) {
                 Page<WirelessApHistory> historyPage;
                 
                 if (keyword != null && !keyword.trim().isEmpty()) {

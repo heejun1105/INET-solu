@@ -5,6 +5,7 @@ import com.inet.entity.Classroom;
 import com.inet.entity.School;
 import com.inet.entity.User;
 import com.inet.repository.WirelessApRepository;
+import com.inet.dto.WirelessApListDto;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class WirelessApService {
@@ -43,9 +45,34 @@ public class WirelessApService {
         return wirelessApRepository.findBySchoolOrderByLocationRoomNameAsc(school);
     }
 
+    /** 해당 학교에 AP 데이터가 1건 이상 있는지 여부 */
+    public boolean hasAps(Long schoolId) {
+        return schoolId != null && wirelessApRepository.countBySchoolSchoolId(schoolId) > 0;
+    }
+
     // ID로 무선 AP 조회
     public Optional<WirelessAp> getWirelessApById(Long id) {
         return wirelessApRepository.findById(id);
+    }
+
+    /** MAC 주소 중복 여부 (excludeApId: 수정 시 제외할 AP ID, 등록 시 null 또는 0) */
+    public boolean existsByMacAddress(String macAddress, Long excludeApId) {
+        if (macAddress == null || macAddress.trim().isEmpty()) return false;
+        String value = macAddress.trim();
+        if (excludeApId != null && excludeApId > 0) {
+            return wirelessApRepository.existsByMacAddressIgnoreCaseAndAPIdNot(value, excludeApId);
+        }
+        return wirelessApRepository.existsByMacAddressIgnoreCase(value);
+    }
+
+    /** 새 라벨 번호 중복 여부 (excludeApId: 수정 시 제외할 AP ID, 등록 시 null 또는 0) */
+    public boolean existsByNewLabelNumber(String newLabelNumber, Long excludeApId) {
+        if (newLabelNumber == null || newLabelNumber.trim().isEmpty()) return false;
+        String value = newLabelNumber.trim();
+        if (excludeApId != null && excludeApId > 0) {
+            return wirelessApRepository.existsByNewLabelNumberIgnoreCaseAndAPIdNot(value, excludeApId);
+        }
+        return wirelessApRepository.existsByNewLabelNumberIgnoreCase(value);
     }
 
     // 무선 AP 저장
@@ -183,6 +210,71 @@ public class WirelessApService {
     // 교실별 무선 AP 조회
     public List<WirelessAp> getWirelessApsByLocation(Classroom location) {
         return wirelessApRepository.findByLocation(location);
+    }
+
+    /**
+     * Entity를 목록용 DTO로 변환
+     */
+    public WirelessApListDto toListDto(WirelessAp ap) {
+        if (ap == null) return null;
+        String apYearFormatted = ap.getAPYear() != null ? String.valueOf(ap.getAPYear().getYear()) : "";
+        return WirelessApListDto.builder()
+                .apId(ap.getAPId())
+                .schoolName(ap.getSchool() != null ? ap.getSchool().getSchoolName() : "미지정")
+                .locationName(ap.getLocation() != null && ap.getLocation().getRoomName() != null ? ap.getLocation().getRoomName() : "")
+                .classroomType(ap.getClassroomType() != null ? ap.getClassroomType() : "")
+                .newLabelNumber(ap.getNewLabelNumber() != null ? ap.getNewLabelNumber() : "")
+                .deviceNumber(ap.getDeviceNumber() != null ? ap.getDeviceNumber() : "")
+                .apYearFormatted(apYearFormatted)
+                .manufacturer(ap.getManufacturer() != null ? ap.getManufacturer() : "")
+                .model(ap.getModel() != null ? ap.getModel() : "")
+                .macAddress(ap.getMacAddress() != null ? ap.getMacAddress() : "")
+                .prevLocation(ap.getPrevLocation() != null ? ap.getPrevLocation() : "")
+                .prevLabelNumber(ap.getPrevLabelNumber() != null ? ap.getPrevLabelNumber() : "")
+                .speed(ap.getSpeed() != null ? ap.getSpeed() : "")
+                .build();
+    }
+
+    /**
+     * 무선 AP 목록을 DTO 목록으로 변환
+     */
+    public List<WirelessApListDto> toListDtoList(List<WirelessAp> list) {
+        if (list == null) return List.of();
+        return list.stream().map(this::toListDto).collect(Collectors.toList());
+    }
+
+    /**
+     * 목록에서 검색어로 필터링. (위치, 제조사, 모델, MAC주소, 신규라벨번호, 장비번호, 기존위치, 기존라벨번호, 교실구분, 속도, 학교명 등)
+     */
+    public List<WirelessAp> filterBySearchKeyword(List<WirelessAp> list, String searchKeyword) {
+        if (searchKeyword == null || searchKeyword.trim().isEmpty()) {
+            return list;
+        }
+        String kw = searchKeyword.trim().toLowerCase();
+        return list.stream()
+                .filter(ap -> matchesKeyword(ap, kw))
+                .collect(Collectors.toList());
+    }
+
+    private boolean matchesKeyword(WirelessAp ap, String kw) {
+        if (ap.getSchool() != null && ap.getSchool().getSchoolName() != null
+                && ap.getSchool().getSchoolName().toLowerCase().contains(kw)) {
+            return true;
+        }
+        if (ap.getLocation() != null && ap.getLocation().getRoomName() != null
+                && ap.getLocation().getRoomName().toLowerCase().contains(kw)) {
+            return true;
+        }
+        if (ap.getManufacturer() != null && ap.getManufacturer().toLowerCase().contains(kw)) return true;
+        if (ap.getModel() != null && ap.getModel().toLowerCase().contains(kw)) return true;
+        if (ap.getMacAddress() != null && ap.getMacAddress().toLowerCase().contains(kw)) return true;
+        if (ap.getNewLabelNumber() != null && ap.getNewLabelNumber().toLowerCase().contains(kw)) return true;
+        if (ap.getDeviceNumber() != null && ap.getDeviceNumber().toLowerCase().contains(kw)) return true;
+        if (ap.getPrevLocation() != null && ap.getPrevLocation().toLowerCase().contains(kw)) return true;
+        if (ap.getPrevLabelNumber() != null && ap.getPrevLabelNumber().toLowerCase().contains(kw)) return true;
+        if (ap.getClassroomType() != null && ap.getClassroomType().toLowerCase().contains(kw)) return true;
+        if (ap.getSpeed() != null && ap.getSpeed().toLowerCase().contains(kw)) return true;
+        return false;
     }
 
     @Transactional

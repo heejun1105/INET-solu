@@ -137,49 +137,57 @@
     box-shadow: 0 0 0 2px rgba(61, 150, 255, 0.1);
 }
 
-/* 반응형 스타일 */
+/* 반응형 스타일 - 모바일 최적화 */
 @media (max-width: 768px) {
+    .container {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+        padding-bottom: max(15px, env(safe-area-inset-bottom));
+    }
     .ip-grid {
         grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 5px;
-        padding: 8px;
+        gap: 8px;
+        padding: 10px;
     }
 
     .ip-item {
-        padding: 6px;
-        min-height: 50px;
+        padding: 10px;
+        min-height: 52px;
+        touch-action: manipulation;
     }
 
     .ip-item:not(.used) {
-        min-height: 35px;
+        min-height: 44px;
     }
 
     .ip-number {
-        font-size: 12px;
-        margin-bottom: 3px;
+        font-size: 13px;
+        margin-bottom: 4px;
     }
 
     .device-type {
-        font-size: 10px;
+        font-size: 11px;
     }
 
     .device-model {
-        font-size: 9px;
+        font-size: 10px;
     }
 
     .device-location {
-        font-size: 9px;
+        font-size: 10px;
     }
 
     .filter-form {
         flex-direction: column;
-        gap: 6px;
+        gap: 10px;
     }
 
     .filter-form select {
         width: 100%;
         min-width: auto;
-        padding: 4px 6px;
+        min-height: 44px;
+        padding: 10px 14px;
+        font-size: 16px;
     }
 }
 

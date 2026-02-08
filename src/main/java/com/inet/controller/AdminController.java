@@ -3,6 +3,7 @@ package com.inet.controller;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import org.springframework.data.domain.Pageable;
 import com.inet.entity.User;
 import com.inet.entity.UserRole;
 import com.inet.entity.Permission;
+import com.inet.dto.UserSummaryDto;
 import com.inet.service.UserService;
 import com.inet.service.PermissionService;
 
@@ -51,7 +53,23 @@ public class AdminController {
         Pageable pageable = PageRequest.of(page, 10);
         Page<User> pendingUsersPage = userService.getPendingUsers(pageable);
         
-        model.addAttribute("pendingUsers", pendingUsersPage.getContent());
+        // 엔티티 대신 요약 DTO 리스트를 뷰에 전달
+        List<UserSummaryDto> pendingUsers = pendingUsersPage.getContent().stream()
+                .map(userEntity -> new UserSummaryDto(
+                        userEntity.getId(),
+                        userEntity.getUsername(),
+                        userEntity.getName(),
+                        userEntity.getOrganization(),
+                        userEntity.getPosition(),
+                        userEntity.getPhoneNumber(),
+                        userEntity.getRole(),
+                        userEntity.getStatus(),
+                        userEntity.getCreatedAt(),
+                        userEntity.getLastLoginAt()
+                ))
+                .collect(Collectors.toList());
+        
+        model.addAttribute("pendingUsers", pendingUsers);
         model.addAttribute("pendingCount", pendingUsersPage.getTotalElements());
         model.addAttribute("pendingUsersPage", pendingUsersPage);
         model.addAttribute("currentPage", page);
@@ -81,7 +99,23 @@ public class AdminController {
             usersPage = userService.getAllUsers(pageable);
         }
         
-        model.addAttribute("users", usersPage.getContent());
+        // 엔티티 대신 DTO 리스트를 뷰에 전달
+        List<UserSummaryDto> users = usersPage.getContent().stream()
+                .map(userEntity -> new UserSummaryDto(
+                        userEntity.getId(),
+                        userEntity.getUsername(),
+                        userEntity.getName(),
+                        userEntity.getOrganization(),
+                        userEntity.getPosition(),
+                        userEntity.getPhoneNumber(),
+                        userEntity.getRole(),
+                        userEntity.getStatus(),
+                        userEntity.getCreatedAt(),
+                        userEntity.getLastLoginAt()
+                ))
+                .collect(Collectors.toList());
+        
+        model.addAttribute("users", users);
         model.addAttribute("usersPage", usersPage);
         model.addAttribute("keyword", keyword);
         model.addAttribute("currentPage", page);
@@ -108,7 +142,7 @@ public class AdminController {
             userService.approveUser(userId, approvedBy, role);
             redirectAttributes.addFlashAttribute("successMessage", "사용자가 승인되었습니다.");
         } catch (RuntimeException e) {
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "사용자 승인"));
         }
         
         return "redirect:/admin/dashboard";
@@ -123,7 +157,7 @@ public class AdminController {
             userService.rejectUser(userId, rejectedBy);
             redirectAttributes.addFlashAttribute("successMessage", "사용자가 거부되었습니다.");
         } catch (RuntimeException e) {
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "사용자 거부"));
         }
         
         return "redirect:/admin/dashboard";
@@ -138,7 +172,7 @@ public class AdminController {
             userService.suspendUser(userId, suspendedBy);
             redirectAttributes.addFlashAttribute("successMessage", "사용자가 정지되었습니다.");
         } catch (RuntimeException e) {
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "사용자 정지"));
         }
         
         return "redirect:/admin/users";
@@ -153,7 +187,7 @@ public class AdminController {
             userService.deleteUser(userId, deletedBy);
             redirectAttributes.addFlashAttribute("successMessage", "사용자가 탈퇴되었습니다.");
         } catch (RuntimeException e) {
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "사용자 탈퇴"));
         }
         
         return "redirect:/admin/users";
@@ -168,7 +202,7 @@ public class AdminController {
             userService.changeUserRole(userId, newRole);
             redirectAttributes.addFlashAttribute("successMessage", "사용자 역할이 변경되었습니다.");
         } catch (RuntimeException e) {
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", com.inet.util.UserMessageUtils.toUserFriendly(e, "사용자 역할 변경"));
         }
         
         return "redirect:/admin/users";
@@ -194,7 +228,7 @@ public class AdminController {
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
             Map<String, Object> response = new HashMap<>();
-            response.put("error", e.getMessage());
+            response.put("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "권한 조회"));
             return ResponseEntity.badRequest().body(response);
         }
     }
@@ -208,7 +242,7 @@ public class AdminController {
             // 새로운 권한 시스템에서는 PermissionController에서 처리
             return ResponseEntity.ok("success");
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(com.inet.util.UserMessageUtils.toUserFriendly(e, "권한 업데이트"));
         }
     }
     

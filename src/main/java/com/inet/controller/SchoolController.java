@@ -1,6 +1,7 @@
 package com.inet.controller;
 
 import com.inet.entity.School;
+import com.inet.dto.SchoolDto;
 import com.inet.service.SchoolService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
+import java.util.stream.Collectors;
 import com.inet.entity.Feature;
 import com.inet.entity.User;
 import com.inet.service.PermissionService;
@@ -68,13 +70,16 @@ public class SchoolController {
         return permissionHelper.checkSchoolPermission(user, feature, schoolId, redirectAttributes);
     }
 
-    // 학교 목록 API (평면도 페이지용)
+    // 학교 목록 API (평면도 페이지용) - DTO로 반환하여 엔티티 노출·지연로딩 방지
     @GetMapping("/api/schools")
     @ResponseBody
-    public ResponseEntity<List<School>> getAllSchoolsApi() {
+    public ResponseEntity<List<SchoolDto>> getAllSchoolsApi() {
         try {
             List<School> schools = schoolService.getAllSchools();
-            return ResponseEntity.ok(schools);
+            List<SchoolDto> dtos = schools.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList());
+            return ResponseEntity.ok(dtos);
         } catch (Exception e) {
             log.error("학교 목록 조회 실패", e);
             return ResponseEntity.internalServerError().build();
@@ -88,8 +93,9 @@ public class SchoolController {
         if (user == null) {
             return "redirect:/";
         }
-        List<School> schools = schoolService.getAllSchools();
-        model.addAttribute("schools", schools);
+        model.addAttribute("schools", schoolService.getAllSchools().stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         model.addAttribute("newSchool", new School());
         
         // 권한 정보 추가
@@ -115,7 +121,7 @@ public class SchoolController {
             redirectAttributes.addFlashAttribute("success", "학교가 성공적으로 추가되었습니다.");
             
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "학교 추가 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "학교 추가"));
         }
         
         return "redirect:/school/manage";
@@ -133,7 +139,7 @@ public class SchoolController {
             redirectAttributes.addFlashAttribute("success", "학교가 성공적으로 삭제되었습니다.");
             
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "학교 삭제 중 오류가 발생했습니다: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "학교 삭제"));
         }
         
         return "redirect:/school/manage";

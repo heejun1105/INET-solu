@@ -4,6 +4,7 @@ import com.inet.entity.SchoolPermission;
 import com.inet.entity.User;
 import com.inet.entity.School;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -29,6 +30,11 @@ public interface SchoolPermissionRepository extends JpaRepository<SchoolPermissi
     
     // 특정 학교에 대한 모든 사용자 권한 조회
     List<SchoolPermission> findBySchool(School school);
+    
+    // 학교 ID로 권한 삭제
+    @Modifying
+    @Query("DELETE FROM SchoolPermission sp WHERE sp.school.schoolId = :schoolId")
+    void deleteBySchoolId(@Param("schoolId") Long schoolId);
     
     // 사용자의 학교 권한 삭제
     void deleteByUser(User user);

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title}">I-NET</title>
+    
+    <!-- 파비콘 -->
+    <link rel="apple-touch-icon" sizes="180x180" th:href="@{/favicon/apple-icon-180x180.png}">
+    <link rel="icon" type="image/png" sizes="32x32" th:href="@{/favicon/favicon-32x32.png}">
+    <link rel="icon" type="image/png" sizes="16x16" th:href="@{/favicon/favicon-16x16.png}">
+    <link rel="manifest" th:href="@{/favicon/manifest.json}">
+    <link rel="shortcut icon" th:href="@{/favicon/favicon.ico}">
+    <meta name="msapplication-TileColor" content="#2b5797">
+    <meta name="msapplication-config" th:content="@{/favicon/browserconfig.xml}">
+    <meta name="theme-color" content="#ffffff">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/main.css">
+    <link rel="stylesheet" href="/navbar.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>

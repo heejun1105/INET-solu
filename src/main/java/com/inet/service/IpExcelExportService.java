@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import com.inet.entity.School;
+
 import java.util.stream.IntStream;
 
 @Service
@@ -51,8 +53,9 @@ public class IpExcelExportService {
     }
 
     public Optional<byte[]> generateExcel(Long schoolId, String secondOctet) {
-        schoolService.getSchoolById(schoolId)
+        School school = schoolService.getSchoolById(schoolId)
                 .orElseThrow(() -> new IllegalArgumentException("학교를 찾을 수 없습니다. (ID: " + schoolId + ")"));
+        String ipThirdOctet = school.getIp() != null ? String.valueOf(school.getIp()) : "x";
 
         List<Device> devices = deviceService.findBySchool(schoolId).stream()
                 .filter(device -> isValidIpAddress(device.getIpAddress()))
@@ -92,17 +95,17 @@ public class IpExcelExportService {
             CellStyle sectionHeaderStyle = createSectionHeaderStyle(workbook);
 
             if ("all".equalsIgnoreCase(secondOctet)) {
-                createCombinedSheet(workbook, devicesByOctet, dateStr, titleStyle, headerStyle, dataStyle, warningStyle, sectionHeaderStyle);
+                createCombinedSheet(workbook, devicesByOctet, dateStr, ipThirdOctet, titleStyle, headerStyle, dataStyle, warningStyle, sectionHeaderStyle);
             } else if (secondOctet != null && !secondOctet.isEmpty()) {
                 List<Device> specificDevices = devicesByOctet.getOrDefault(secondOctet, new ArrayList<>());
                 if (specificDevices.isEmpty()) {
                     return Optional.empty();
                 }
-                createSheet(workbook, secondOctet, specificDevices, dateStr, titleStyle, headerStyle, dataStyle, warningStyle);
+                createSheet(workbook, secondOctet, specificDevices, dateStr, ipThirdOctet, titleStyle, headerStyle, dataStyle, warningStyle);
             } else {
                 devicesByOctet.keySet().stream()
                         .sorted(Comparator.comparingInt(Integer::parseInt))
-                        .forEach(octet -> createSheet(workbook, octet, devicesByOctet.get(octet), dateStr, titleStyle, headerStyle, dataStyle, warningStyle));
+                        .forEach(octet -> createSheet(workbook, octet, devicesByOctet.get(octet), dateStr, ipThirdOctet, titleStyle, headerStyle, dataStyle, warningStyle));
             }
 
             workbook.write(outputStream);
@@ -113,7 +116,7 @@ public class IpExcelExportService {
     }
 
     private void createCombinedSheet(Workbook workbook, Map<String, List<Device>> devicesByOctet,
-                                     String dateStr,
+                                     String dateStr, String ipThirdOctet,
                                      CellStyle titleStyle, CellStyle headerStyle,
                                      CellStyle dataStyle, CellStyle warningStyle,
                                      CellStyle sectionHeaderStyle) {
@@ -186,7 +189,7 @@ public class IpExcelExportService {
             Row sectionRow = sheet.createRow(currentRow++);
             sectionRow.setHeightInPoints(25); // 행 높이 25
             Cell sectionCell = sectionRow.createCell(0);
-            sectionCell.setCellValue("IP 대역: 10." + octet + ".36.x");
+            sectionCell.setCellValue("IP 대역: 10." + octet + "." + ipThirdOctet + ".x");
             sectionCell.setCellStyle(sectionHeaderStyle);
             sheet.addMergedRegion(new CellRangeAddress(currentRow - 1, currentRow - 1, 0, 15));
 
@@ -242,7 +245,7 @@ public class IpExcelExportService {
     }
 
     private void createSheet(Workbook workbook, String secondOctet, List<Device> devices,
-                             String dateStr,
+                             String dateStr, String ipThirdOctet,
                              CellStyle titleStyle, CellStyle headerStyle,
                              CellStyle dataStyle, CellStyle warningStyle) {
         Sheet sheet = workbook.createSheet(secondOctet);
@@ -257,7 +260,7 @@ public class IpExcelExportService {
         Row titleRow = sheet.createRow(0);
         titleRow.setHeightInPoints(60); // 행 높이 60
         Cell titleCell = titleRow.createCell(0);
-        titleCell.setCellValue(String.format("IP대장업무용(10.%s.36.001-254)", secondOctet));
+        titleCell.setCellValue(String.format("IP대장업무용(10.%s.%s.001-254)", secondOctet, ipThirdOctet));
         
         // 제목 스타일 수정 (시트별 색상 적용)
         CellStyle newTitleStyle = workbook.createCellStyle();

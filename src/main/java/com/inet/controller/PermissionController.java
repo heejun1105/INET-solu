@@ -3,6 +3,7 @@ package com.inet.controller;
 import com.inet.entity.*;
 import com.inet.service.*;
 import com.inet.config.PermissionHelper;
+import com.inet.dto.SchoolDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -154,12 +155,12 @@ public class PermissionController {
         } catch (NumberFormatException e) {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "잘못된 숫자 형식입니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "권한 저장"));
             return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "권한 저장 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "권한 저장"));
             return ResponseEntity.badRequest().body(response);
         }
     }
@@ -187,7 +188,7 @@ public class PermissionController {
             
         } catch (Exception e) {
             Map<String, Object> response = new HashMap<>();
-            response.put("error", e.getMessage());
+            response.put("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "권한 조회"));
             return ResponseEntity.badRequest().body(response);
         }
     }
@@ -206,14 +207,17 @@ public class PermissionController {
             
             User user = userOpt.get();
             List<School> accessibleSchools = schoolPermissionService.getAccessibleSchools(user);
+            List<SchoolDto> schoolDtos = accessibleSchools.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList());
             
             Map<String, Object> response = new HashMap<>();
-            response.put("schools", accessibleSchools);
+            response.put("schools", schoolDtos);
             return ResponseEntity.ok(response);
             
         } catch (Exception e) {
             Map<String, Object> response = new HashMap<>();
-            response.put("error", e.getMessage());
+            response.put("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "학교 목록 조회"));
             return ResponseEntity.badRequest().body(response);
         }
     }

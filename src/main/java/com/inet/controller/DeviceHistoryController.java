@@ -1,5 +1,6 @@
 package com.inet.controller;
 
+import com.inet.dto.SchoolDto;
 import com.inet.entity.DeviceHistory;
 import com.inet.entity.School;
 import com.inet.entity.User;
@@ -28,6 +29,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/device/history")
@@ -67,9 +69,10 @@ public class DeviceHistoryController {
             return "redirect:/auth/login";
         }
         
-        // 학교 목록 조회
-        List<School> schools = schoolService.getAllSchools();
-        model.addAttribute("schools", schools);
+        // 학교 목록 조회 (뷰에는 DTO 전달)
+        model.addAttribute("schools", schoolService.getAllSchools().stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 장비 유형 목록 조회
         List<String> types = deviceHistoryService.getAllDeviceTypes();
@@ -80,7 +83,7 @@ public class DeviceHistoryController {
         
         // 학교 선택 여부에 따른 처리
         Page<DeviceHistory> historyPage;
-        School selectedSchool = null;
+        SchoolDto selectedSchool = null;
         
         if (schoolId != null) {
             // 학교 권한 체크
@@ -98,8 +101,9 @@ public class DeviceHistoryController {
                 historyPage = deviceHistoryService.getDeviceHistoryBySchool(schoolId, page, size);
             }
             
-            // 선택된 학교 정보
-            selectedSchool = schoolService.getSchoolById(schoolId).orElse(null);
+            // 선택된 학교 정보 (뷰에는 DTO 전달)
+            School school = schoolService.getSchoolById(schoolId).orElse(null);
+            selectedSchool = school != null ? new SchoolDto(school.getSchoolId(), school.getSchoolName(), school.getIp()) : null;
         } else {
             // 학교가 선택되지 않은 경우 빈 페이지 반환
             historyPage = null;

@@ -1,5 +1,6 @@
 package com.inet.controller;
 
+import com.inet.dto.SchoolDto;
 import com.inet.entity.Device;
 import com.inet.entity.School;
 import com.inet.entity.Manage;
@@ -145,21 +146,25 @@ public class IpController {
             return "redirect:/";
         }
         
-        // 학교 목록 조회 (권한이 있는 학교만)
-        List<School> schools = schoolPermissionService.getAccessibleSchools(user);
-        model.addAttribute("schools", schools);
+        // 학교 목록 조회 (권한이 있는 학교만, 뷰에는 DTO 전달)
+        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user).stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
 
-        School selectedSchool = null;
+        SchoolDto selectedSchool = null;
         if (schoolId != null) {
-            selectedSchool = schoolService.findById(schoolId)
+            School school = schoolService.findById(schoolId)
                 .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+            selectedSchool = new SchoolDto(school.getSchoolId(), school.getSchoolName(), school.getIp());
             model.addAttribute("selectedSchool", selectedSchool);
+            // IP 대역 3번째 자리: 학교 IP 사용, 없으면 "x"
+            model.addAttribute("ipThirdOctet", selectedSchool.getIp() != null ? String.valueOf(selectedSchool.getIp()) : "x");
 
             // 해당 학교의 모든 장비 조회 및 유효한 IP 주소만 필터링
-            List<Device> devices = deviceService.findDevicesBySchool(selectedSchool).stream()
+            List<Device> devices = deviceService.findDevicesBySchool(school).stream()
                 .filter(d -> isValidIpAddress(d.getIpAddress()))
                 .collect(Collectors.toList());
             
@@ -239,6 +244,79 @@ public class IpController {
         return "ip/iplist";
     }
 
+    /** 장비 수정 등에서 모달로 IP 대장을 보여주기 위한 HTML 프래그먼트 (schoolId 필수) */
+    @GetMapping("/iplist-fragment")
+    public String ipListFragment(@RequestParam Long schoolId,
+                                 @RequestParam(required = false) String secondOctet,
+                                 Model model, RedirectAttributes redirectAttributes) {
+        User user = checkSchoolPermission(Feature.DEVICE_LIST, schoolId, redirectAttributes);
+        if (user == null) {
+            return "redirect:/";
+        }
+        School school = schoolService.findById(schoolId)
+                .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        SchoolDto selectedSchool = new SchoolDto(school.getSchoolId(), school.getSchoolName(), school.getIp());
+        model.addAttribute("selectedSchool", selectedSchool);
+        model.addAttribute("ipThirdOctet", selectedSchool.getIp() != null ? String.valueOf(selectedSchool.getIp()) : "x");
+
+        List<Device> devices = deviceService.findDevicesBySchool(school).stream()
+                .filter(d -> isValidIpAddress(d.getIpAddress()))
+                .collect(Collectors.toList());
+
+        Set<String> secondOctets = devices.stream()
+                .map(d -> d.getIpAddress().split("\\.")[1])
+                .collect(Collectors.toSet());
+        model.addAttribute("secondOctets", secondOctets);
+        model.addAttribute("selectedSecondOctet", secondOctet);
+
+        if (secondOctet == null || secondOctet.isEmpty() || "all".equals(secondOctet)) {
+            Map<String, List<Map<String, Object>>> ipListByOctet = new HashMap<>();
+            Map<String, List<Device>> devicesByOctet = devices.stream()
+                    .collect(Collectors.groupingBy(d -> d.getIpAddress().split("\\.")[1]));
+            devicesByOctet.forEach((octet, deviceList) -> {
+                Map<Integer, Device> deviceMap = deviceList.stream()
+                        .collect(Collectors.toMap(
+                                d -> Integer.parseInt(d.getIpAddress().split("\\.")[3]),
+                                d -> d,
+                                (existing, replacement) -> existing
+                        ));
+                List<Map<String, Object>> ipList = IntStream.rangeClosed(1, 254)
+                        .mapToObj(i -> {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("number", i);
+                            map.put("device", deviceMap.getOrDefault(i, null));
+                            return map;
+                        })
+                        .collect(Collectors.toList());
+                ipListByOctet.put(octet, ipList);
+            });
+            model.addAttribute("ipListByOctet", ipListByOctet);
+            model.addAttribute("isAllView", true);
+        } else {
+            Map<Integer, Device> deviceMap = devices.stream()
+                    .filter(d -> {
+                        String[] parts = d.getIpAddress().split("\\.");
+                        return parts[1].equals(secondOctet);
+                    })
+                    .collect(Collectors.toMap(
+                            d -> Integer.parseInt(d.getIpAddress().split("\\.")[3]),
+                            d -> d,
+                            (existing, replacement) -> existing
+                    ));
+            List<Map<String, Object>> ipList = IntStream.rangeClosed(1, 254)
+                    .mapToObj(i -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("number", i);
+                        map.put("device", deviceMap.getOrDefault(i, null));
+                        return map;
+                    })
+                    .collect(Collectors.toList());
+            model.addAttribute("ipList", ipList);
+            model.addAttribute("isAllView", false);
+        }
+        return "ip/iplist-fragment";
+    }
+
     @GetMapping("/download")
     public void downloadExcel(@RequestParam Long schoolId, @RequestParam(required = false) String secondOctet, 
                             HttpServletResponse response) throws IOException {
@@ -263,6 +341,7 @@ public class IpController {
         }
         School school = schoolService.getSchoolById(schoolId)
             .orElseThrow(() -> new RuntimeException("School not found with id: " + schoolId));
+        String ipThirdOctet = school.getIp() != null ? String.valueOf(school.getIp()) : "x";
 
         // 모든 장비 가져오기
         List<Device> allDevices = deviceService.findBySchool(schoolId).stream()
@@ -303,25 +382,25 @@ public class IpController {
 
             if ("all".equalsIgnoreCase(secondOctet)) {
                 // 전체 IP 대역을 하나의 시트에 표시
-                createCombinedSheet(workbook, devicesByOctet, dateStr, titleStyle, headerStyle, 
+                createCombinedSheet(workbook, devicesByOctet, dateStr, ipThirdOctet, titleStyle, headerStyle, 
                                   dataStyle, warningStyle, sectionHeaderStyle);
             } else if (secondOctet != null && !secondOctet.isEmpty()) {
                 // 단일 시트 생성
                 createSheet(workbook, secondOctet, devicesByOctet.getOrDefault(secondOctet, new ArrayList<>()), 
-                          dateStr, titleStyle, headerStyle, dataStyle, warningStyle);
+                          dateStr, ipThirdOctet, titleStyle, headerStyle, dataStyle, warningStyle);
             } else {
                 // 각 IP 대역별로 시트 생성
                 devicesByOctet.keySet().stream()
                     .sorted((a, b) -> Integer.parseInt(a) - Integer.parseInt(b))
                     .forEach(octet -> createSheet(workbook, octet, devicesByOctet.get(octet), 
-                                                dateStr, titleStyle, headerStyle, dataStyle, warningStyle));
+                                                dateStr, ipThirdOctet, titleStyle, headerStyle, dataStyle, warningStyle));
             }
 
             // 파일 다운로드 설정
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            String fileName = String.format("IP대장업무용(10.%s.36.001-254).xlsx",
-                "all".equalsIgnoreCase(secondOctet) ? "ALL" : 
-                (secondOctet != null ? secondOctet : "ALL"));
+            String fileName = String.format("IP대장업무용(10.%s.%s.001-254).xlsx",
+                "all".equalsIgnoreCase(secondOctet) ? "ALL" : (secondOctet != null ? secondOctet : "ALL"),
+                ipThirdOctet);
             response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
 
             // 파일 쓰기
@@ -408,7 +487,7 @@ public class IpController {
 
     // 전체 IP 대역을 하나의 시트에 표시하는 메서드
     private void createCombinedSheet(Workbook workbook, Map<String, List<Device>> devicesByOctet,
-                                   String dateStr,
+                                   String dateStr, String ipThirdOctet,
                                    CellStyle titleStyle, CellStyle headerStyle, 
                                    CellStyle dataStyle, CellStyle warningStyle,
                                    CellStyle sectionHeaderStyle) {
@@ -486,7 +565,7 @@ public class IpController {
             Row sectionRow = sheet.createRow(currentRow++);
             sectionRow.setHeightInPoints(25);
             Cell sectionCell = sectionRow.createCell(0);
-            sectionCell.setCellValue("IP 대역: 10." + octet + ".36.x");
+            sectionCell.setCellValue("IP 대역: 10." + octet + "." + ipThirdOctet + ".x");
             sectionCell.setCellStyle(sectionHeaderStyle);
             sheet.addMergedRegion(new CellRangeAddress(currentRow - 1, currentRow - 1, 0, 15));
 
@@ -594,7 +673,7 @@ public class IpController {
 
     // 시트 생성 메서드
     private void createSheet(Workbook workbook, String secondOctet, List<Device> devices,
-                           String dateStr,
+                           String dateStr, String ipThirdOctet,
                            CellStyle titleStyle, CellStyle headerStyle, 
                            CellStyle dataStyle, CellStyle warningStyle) {
         Sheet sheet = workbook.createSheet(secondOctet);
@@ -611,7 +690,7 @@ public class IpController {
         Row titleRow = sheet.createRow(0);
         titleRow.setHeightInPoints(40);
         Cell titleCell = titleRow.createCell(0);
-        titleCell.setCellValue(String.format("IP대장업무용(10.%s.36.001-254)", secondOctet));
+        titleCell.setCellValue(String.format("IP대장업무용(10.%s.%s.001-254)", secondOctet, ipThirdOctet));
         titleCell.setCellStyle(titleStyle);
         sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 15));
 

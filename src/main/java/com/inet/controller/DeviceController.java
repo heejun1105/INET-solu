@@ -52,6 +52,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inet.entity.DeviceInspectionHistory;
+import com.inet.dto.DeviceListDto;
+import com.inet.dto.DeviceListResponseDto;
+import com.inet.dto.DeviceInspectionHistoryDto;
+import com.inet.dto.SchoolDto;
+import com.inet.dto.ClassroomDto;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -139,6 +144,31 @@ public class DeviceController {
         return permissionHelper.checkSchoolPermission(user, feature, schoolId, redirectAttributes);
     }
 
+    /** 장비 등록/수정 시 기술적 예외 메시지를 사용자가 이해하기 쉬운 문구로 변환 */
+    private String resolveUserFriendlyErrorMessage(Throwable e, boolean forRegister) {
+        if (e == null) return forRegister ? "장비 등록 중 오류가 발생했습니다." : "장비 수정 중 오류가 발생했습니다.";
+        String msg = e.getMessage() != null ? e.getMessage() : "";
+        String lower = msg.toLowerCase();
+        // IP 중복 (JPA NonUniqueResult 등)
+        if (lower.contains("query did not return a unique result") || lower.contains("results were returned")
+                || lower.contains("nonuniqueresult") || lower.contains("unique result")) {
+            return "입력하신 IP 주소가 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요.";
+        }
+        // 이미 사용자 친화적인 메시지면 그대로 사용
+        if (msg.contains("입력하신 IP 주소") && msg.contains("이미 다른 장비에 등록")) return msg;
+        if (msg.contains("이미 있는 IP 주소")) return msg;
+        if (msg.contains("동일한 고유번호가 이미 존재")) return msg;
+        if (msg.contains("동일한 관리번호가 이미 존재")) return msg;
+        if (msg.contains("고유번호가 누락")) return msg;
+        // DB 제약/중복
+        if (lower.contains("dataintegrityviolation") || lower.contains("constraint") || lower.contains("duplicate entry")
+                || lower.contains("unique constraint") || lower.contains("duplicate key")) {
+            return "이미 등록된 데이터와 충돌합니다. 고유번호, 관리번호, IP 주소 등이 다른 장비와 중복되지 않는지 확인해 주세요.";
+        }
+        // 그 외
+        return forRegister ? "장비 등록 중 오류가 발생했습니다. 입력 내용을 확인한 후 다시 시도해 주세요." : "장비 수정 중 오류가 발생했습니다. 입력 내용을 확인한 후 다시 시도해 주세요.";
+    }
+
     @GetMapping("/list")
     public String list(@RequestParam(required = false) Long schoolId,
                       @RequestParam(required = false) String type,
@@ -148,10 +178,12 @@ public class DeviceController {
                       @RequestParam(required = false) Boolean inspectionMode,
                       @RequestParam(required = false) Boolean showClassroomsWithDevices,
                       @RequestParam(required = false) Boolean sortByPurpose,
+                      @RequestParam(required = false) Boolean showUnusedOnly,
                       @RequestParam(defaultValue = "1") int page,
                       @RequestParam(defaultValue = "16") int size,
                       Model model,
-                      RedirectAttributes redirectAttributes) {
+                      RedirectAttributes redirectAttributes,
+                      jakarta.servlet.http.HttpServletRequest request) {
         
         // 권한 체크 (학교별 권한 체크는 schoolId가 있을 때만)
         User user;
@@ -164,29 +196,34 @@ public class DeviceController {
             return "redirect:/";
         }
         
-        // 사용자가 접근 가능한 학교 목록만 표시
-        List<School> schools = schoolPermissionService.getAccessibleSchools(user);
+        // 사용자가 접근 가능한 학교 목록만 표시 (뷰에는 DTO 전달)
+        List<School> schoolEntities = schoolPermissionService.getAccessibleSchools(user);
+        List<SchoolDto> schools = schoolEntities.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList());
         model.addAttribute("schools", schools);
         
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         
-        // 선택된 학교에 따른 교실 목록
-        List<Classroom> classrooms;
+        // 선택된 학교에 따른 교실 목록 (뷰에는 DTO 전달)
+        List<ClassroomDto> classrooms;
         if (schoolId != null) {
-            classrooms = classroomService.findBySchoolId(schoolId);
+            classrooms = classroomService.findBySchoolId(schoolId).stream()
+                    .map(c -> new ClassroomDto(c.getClassroomId(), c.getRoomName(), c.getXCoordinate(), c.getYCoordinate(), c.getWidth(), c.getHeight(), c.getDisplayOrder()))
+                    .collect(Collectors.toList());
         } else {
             classrooms = classroomService.getAllClassrooms().stream()
                 .collect(Collectors.collectingAndThen(
                     Collectors.toMap(
                         Classroom::getRoomName,
-                        classroom -> classroom,
+                        c -> new ClassroomDto(c.getClassroomId(), c.getRoomName(), c.getXCoordinate(), c.getYCoordinate(), c.getWidth(), c.getHeight(), c.getDisplayOrder()),
                         (existing, replacement) -> existing
                     ),
                     map -> new ArrayList<>(map.values())
                 ))
                 .stream()
-                .sorted(Comparator.comparing(Classroom::getRoomName))
+                .sorted(Comparator.comparing(ClassroomDto::getRoomName))
                 .collect(Collectors.toList());
         }
         model.addAttribute("classrooms", classrooms);
@@ -202,6 +239,7 @@ public class DeviceController {
         model.addAttribute("selectedClassroomName", classroomName);
         model.addAttribute("searchKeyword", searchKeyword);
         model.addAttribute("sortByPurpose", sortByPurpose != null && sortByPurpose);
+        model.addAttribute("selectedShowUnusedOnly", showUnusedOnly != null && showUnusedOnly);
 
         // 모든 장비를 가져와서 교실별로 정렬
         List<Device> allDevices;
@@ -253,6 +291,13 @@ public class DeviceController {
             // 검색어가 없지만 "장비가 있는 교실" 체크박스가 체크된 경우
             // 모든 교실의 장비를 가져옴 (기본 필터링 결과 사용)
             // 이미 위에서 allDevices가 설정되었으므로 추가 처리 불필요
+        }
+        
+        // 불용만 보기: unused가 true(Y)인 장비만 필터링
+        if (showUnusedOnly != null && showUnusedOnly) {
+            allDevices = allDevices.stream()
+                    .filter(d -> d.getUnused() != null && d.getUnused())
+                    .collect(Collectors.toList());
         }
         
         // 정렬 및 그룹화 로직
@@ -425,21 +470,232 @@ public class DeviceController {
         }
         model.addAttribute("inspectionStatuses", inspectionStatuses != null ? inspectionStatuses : new HashMap<>());
         
+        // 등록/수정 후 돌아올 때 필터 유지를 위한 현재 목록 URL (쿼리스트링 포함)
+        String listUrl = request != null && request.getRequestURL() != null
+                ? request.getRequestURL().toString() + (request.getQueryString() != null && !request.getQueryString().isEmpty() ? "?" + request.getQueryString() : "")
+                : "/device/list";
+        model.addAttribute("listUrl", listUrl);
+        // returnUrl 쿼리 파라미터로 넘길 때 ?& 문자가 파싱에 사용되므로 인코딩된 값 사용
+        try {
+            model.addAttribute("listUrlEncoded", listUrl != null ? java.net.URLEncoder.encode(listUrl, java.nio.charset.StandardCharsets.UTF_8) : "");
+        } catch (Exception e) {
+            model.addAttribute("listUrlEncoded", "");
+        }
+        
         return "device/list";
     }
 
+    /**
+     * 장비 목록 API. list()와 동일한 필터/정렬/페이징 로직으로 JSON 반환.
+     */
+    @GetMapping("/api/list")
+    @ResponseBody
+    public ResponseEntity<?> getDeviceListApi(
+            @RequestParam(required = false) Long schoolId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Long classroomId,
+            @RequestParam(required = false) String classroomName,
+            @RequestParam(required = false) String searchKeyword,
+            @RequestParam(required = false) Boolean inspectionMode,
+            @RequestParam(required = false) Boolean showClassroomsWithDevices,
+            @RequestParam(required = false) Boolean sortByPurpose,
+            @RequestParam(required = false) Boolean showUnusedOnly,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "16") int size,
+            RedirectAttributes redirectAttributes,
+            jakarta.servlet.http.HttpServletRequest request) {
+        User user;
+        if (schoolId != null) {
+            user = checkSchoolPermission(Feature.DEVICE_LIST, schoolId, redirectAttributes);
+        } else {
+            user = checkPermission(Feature.DEVICE_LIST, redirectAttributes);
+        }
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        List<Device> allDevices;
+        if (schoolId == null && classroomId != null) {
+            String selectedClassroomName = classroomService.getClassroomById(classroomId)
+                    .map(Classroom::getRoomName).orElse(null);
+            if (selectedClassroomName != null && !selectedClassroomName.isEmpty()) {
+                allDevices = (type != null && !type.isEmpty())
+                        ? deviceService.findByClassroomNameAndType(selectedClassroomName, type)
+                        : deviceService.findByClassroomName(selectedClassroomName);
+            } else {
+                allDevices = deviceService.findFiltered(null, type, classroomId);
+            }
+        } else if (schoolId != null) {
+            allDevices = deviceService.findFiltered(schoolId, type, classroomId);
+        } else if (classroomName != null && !classroomName.isEmpty()) {
+            allDevices = (type != null && !type.isEmpty())
+                    ? deviceService.findByClassroomNameAndType(classroomName, type)
+                    : deviceService.findByClassroomName(classroomName);
+        } else {
+            allDevices = deviceService.findFiltered(null, type, null);
+        }
+        if (searchKeyword != null && !searchKeyword.trim().isEmpty()) {
+            if (showClassroomsWithDevices != null && showClassroomsWithDevices) {
+                List<Device> matchingDevices = deviceService.searchDevices(schoolId, type, classroomId, searchKeyword);
+                Set<String> classroomNames = matchingDevices.stream()
+                        .filter(d -> d.getClassroom() != null && d.getClassroom().getRoomName() != null)
+                        .map(d -> d.getClassroom().getRoomName())
+                        .collect(Collectors.toSet());
+                allDevices = deviceService.findDevicesByClassroomNames(classroomNames, schoolId, type);
+            } else {
+                allDevices = deviceService.searchDevices(schoolId, type, classroomId, searchKeyword);
+            }
+        }
+        if (showUnusedOnly != null && showUnusedOnly) {
+            allDevices = allDevices.stream()
+                    .filter(d -> d.getUnused() != null && d.getUnused())
+                    .collect(Collectors.toList());
+        }
+        Map<String, List<Device>> devicesByClassroom;
+        if (sortByPurpose != null && sortByPurpose) {
+            Map<Integer, List<Device>> devicesByPurpose = allDevices.stream()
+                    .collect(Collectors.groupingBy(d -> getPurposeOrder(d.getPurpose() != null ? d.getPurpose() : ""),
+                            LinkedHashMap::new, Collectors.toList()));
+            Map<Integer, List<Device>> sortedByPurpose = devicesByPurpose.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
+            devicesByClassroom = new LinkedHashMap<>();
+            for (List<Device> purposeDevices : sortedByPurpose.values()) {
+                Map<String, List<Device>> classroomGroup = purposeDevices.stream()
+                        .collect(Collectors.groupingBy(d -> d.getClassroom() != null && d.getClassroom().getRoomName() != null
+                                ? d.getClassroom().getRoomName() : "미지정 교실", LinkedHashMap::new, Collectors.toList()));
+                classroomGroup.entrySet().stream()
+                        .sorted((e1, e2) -> compareByClassroom(e1.getValue().get(0), e2.getValue().get(0)))
+                        .forEach(e -> devicesByClassroom.put(e.getKey(), e.getValue()));
+            }
+        } else {
+            allDevices.sort(this::compareByClassroom);
+            devicesByClassroom = allDevices.stream()
+                    .collect(Collectors.groupingBy(d -> d.getClassroom() != null && d.getClassroom().getRoomName() != null
+                            ? d.getClassroom().getRoomName() : "미지정 교실", LinkedHashMap::new, Collectors.toList()));
+        }
+        for (List<Device> devices : devicesByClassroom.values()) {
+            devices.sort((d1, d2) -> {
+                boolean hasSet1 = d1.getSetType() != null && !d1.getSetType().trim().isEmpty();
+                boolean hasSet2 = d2.getSetType() != null && !d2.getSetType().trim().isEmpty();
+                if (hasSet1 && hasSet2) {
+                    int c = d1.getSetType().compareTo(d2.getSetType());
+                    if (c != 0) return c;
+                } else if (hasSet1) return -1;
+                else if (hasSet2) return 1;
+                String op1 = d1.getOperator() != null && d1.getOperator().getName() != null ? d1.getOperator().getName() : "미지정 담당자";
+                String op2 = d2.getOperator() != null && d2.getOperator().getName() != null ? d2.getOperator().getName() : "미지정 담당자";
+                return op1.compareTo(op2);
+            });
+        }
+        List<Device> paginatedDevices = new ArrayList<>();
+        if (sortByPurpose != null && sortByPurpose) {
+            Map<Integer, List<Device>> devicesByPurpose = allDevices.stream()
+                    .collect(Collectors.groupingBy(d -> getPurposeOrder(d.getPurpose() != null ? d.getPurpose() : ""),
+                            LinkedHashMap::new, Collectors.toList()));
+            devicesByPurpose.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new))
+                    .values().forEach(purposeDevices -> {
+                Map<String, List<Device>> classroomGroup = purposeDevices.stream()
+                        .collect(Collectors.groupingBy(d -> d.getClassroom() != null && d.getClassroom().getRoomName() != null
+                                ? d.getClassroom().getRoomName() : "미지정 교실", LinkedHashMap::new, Collectors.toList()));
+                classroomGroup.entrySet().stream()
+                        .sorted((e1, e2) -> compareByClassroom(e1.getValue().get(0), e2.getValue().get(0)))
+                        .forEach(e -> paginatedDevices.addAll(e.getValue()));
+            });
+        } else {
+            devicesByClassroom.values().forEach(paginatedDevices::addAll);
+        }
+        int totalDevices = paginatedDevices.size();
+        int totalPages = (int) Math.ceil((double) totalDevices / size);
+        int fromIndex = (page - 1) * size;
+        int toIndex = Math.min(fromIndex + size, totalDevices);
+        List<Device> currentPageDevices = paginatedDevices.subList(fromIndex, toIndex);
+        int startPage = ((page - 1) / 10) * 10 + 1;
+        int endPage = Math.min(startPage + 9, totalPages);
+        DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("yyyy년 MM월");
+        List<DeviceListDto> dtos = currentPageDevices.stream()
+                .<DeviceListDto>map(d -> {
+            String uidDisplay = d.getUid() != null ? (d.getUid().getDisplayUid() != null ? d.getUid().getDisplayUid() : d.getUid().getDisplayId()) : "";
+            String manageDisplay = d.getManage() != null ? d.getManage().getDisplayId() : "";
+            String purchaseFormatted = d.getPurchaseDate() != null ? d.getPurchaseDate().format(dateFmt) : "";
+            return DeviceListDto.builder()
+                    .deviceId(d.getDeviceId())
+                    .schoolName(d.getSchool() != null ? d.getSchool().getSchoolName() : "미지정")
+                    .uidDisplay(uidDisplay != null ? uidDisplay : "")
+                    .manageDisplay(manageDisplay != null ? manageDisplay : "")
+                    .type(d.getType() != null ? d.getType() : "")
+                    .operatorPosition(d.getOperator() != null ? d.getOperator().getPosition() : "")
+                    .operatorName(d.getOperator() != null ? d.getOperator().getName() : "")
+                    .manufacturer(d.getManufacturer())
+                    .modelName(d.getModelName())
+                    .purchaseDateFormatted(purchaseFormatted)
+                    .ipAddress(d.getIpAddress())
+                    .classroomId(d.getClassroom() != null ? d.getClassroom().getClassroomId() : null)
+                    .classroomName(d.getClassroom() != null && d.getClassroom().getRoomName() != null ? d.getClassroom().getRoomName() : "")
+                    .purpose(d.getPurpose())
+                    .setType(d.getSetType())
+                    .note(d.getNote())
+                    .unused(d.getUnused())
+                    .build();
+        }).collect(Collectors.toList());
+        Map<Long, String> inspectionStatuses = new HashMap<>();
+        boolean isInspectionMode = Boolean.TRUE.equals(inspectionMode);
+        if (isInspectionMode && schoolId != null) {
+            try {
+                inspectionStatuses.putAll(deviceInspectionStatusService.getInspectionStatuses(schoolId, user.getId()));
+            } catch (Exception e) {
+                log.error("검사 상태 로드 중 오류", e);
+            }
+        }
+        for (int i = 0; i < dtos.size(); i++) {
+            Long did = dtos.get(i).getDeviceId();
+            if (inspectionStatuses.containsKey(did)) {
+                dtos.get(i).setInspectionStatus(inspectionStatuses.get(did));
+            }
+        }
+        String listUrl = "/device/list";
+        if (request != null && request.getQueryString() != null && !request.getQueryString().isEmpty()) {
+            listUrl = "/device/list?" + request.getQueryString();
+        }
+        String listUrlEncoded = "";
+        try {
+            listUrlEncoded = java.net.URLEncoder.encode(listUrl, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) { }
+        DeviceListResponseDto body = DeviceListResponseDto.builder()
+                .devices(dtos)
+                .currentPage(page)
+                .pageSize(size)
+                .totalPages(totalPages)
+                .startPage(startPage)
+                .endPage(endPage)
+                .sortByPurpose(sortByPurpose != null && sortByPurpose)
+                .listUrlEncoded(listUrlEncoded)
+                .inspectionMode(isInspectionMode)
+                .inspectionStatuses(inspectionStatuses)
+                .searchKeyword(searchKeyword != null ? searchKeyword : "")
+                .build();
+        return ResponseEntity.ok(body);
+    }
+
     @GetMapping("/register")
-    public String registerForm(Model model, RedirectAttributes redirectAttributes) {
+    public String registerForm(@RequestParam(required = false) String returnUrl, Model model, RedirectAttributes redirectAttributes) {
         // 권한 체크
         User user = checkPermission(Feature.DEVICE_MANAGEMENT, redirectAttributes);
         if (user == null) {
             return "redirect:/";
         }
         model.addAttribute("device", new Device());
-        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user));
-        model.addAttribute("classrooms", classroomService.getAllClassrooms());
+        List<School> schoolEntities = schoolPermissionService.getAccessibleSchools(user);
+        model.addAttribute("schools", schoolEntities.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
+        model.addAttribute("classrooms", classroomService.getAllClassrooms().stream()
+                .map(c -> new ClassroomDto(c.getClassroomId(), c.getRoomName(), c.getXCoordinate(), c.getYCoordinate(), c.getWidth(), c.getHeight(), c.getDisplayOrder()))
+                .collect(Collectors.toList()));
         model.addAttribute("types", deviceService.getAllTypes());
-        
+        if (returnUrl != null && !returnUrl.isBlank()) {
+            model.addAttribute("returnUrl", returnUrl);
+        }
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         
@@ -450,7 +706,7 @@ public class DeviceController {
     public String register(Device device, String operatorName, String operatorPosition, String location, String locationCustom,
                           String manageCate, String manageCateCustom, String manageYear, String manageYearCustom, String manageNum, String manageNumCustom,
                           String uidCate, String uidCateCustom, String uidYear, String uidYearCustom, String uidNum, String uidNumCustom,
-                          String purchaseYear, String purchaseMonth, RedirectAttributes redirectAttributes) {
+                          String purchaseYear, String purchaseMonth, @RequestParam(required = false) String returnUrl, RedirectAttributes redirectAttributes) {
         
         try {
         // 권한 체크 (학교별 권한 체크)
@@ -577,13 +833,23 @@ public class DeviceController {
 
         deviceService.saveDevice(device);
         redirectAttributes.addFlashAttribute("successMessage", "장비가 성공적으로 등록되었습니다.");
+        if (returnUrl != null && !returnUrl.isBlank()) {
+            try {
+                String decoded = java.net.URLDecoder.decode(returnUrl, java.nio.charset.StandardCharsets.UTF_8);
+                return "redirect:" + decoded;
+            } catch (Exception e) {
+                return "redirect:" + returnUrl;
+            }
+        }
         return "redirect:/device/list";
             
         } catch (Exception e) {
             log.error("장비 등록 중 오류 발생: ", e);
-            String errorMessage = "장비 등록 중 오류가 발생했습니다: " + e.getMessage();
+            String errorMessage = resolveUserFriendlyErrorMessage(e, true);
             redirectAttributes.addFlashAttribute("errorMessage", errorMessage);
-            redirectAttributes.addFlashAttribute("errorDetails", e.toString());
+            if (returnUrl != null && !returnUrl.isBlank()) {
+                return "redirect:/device/register?returnUrl=" + java.net.URLEncoder.encode(returnUrl, java.nio.charset.StandardCharsets.UTF_8);
+            }
             return "redirect:/device/register";
         }
     }
@@ -603,13 +869,23 @@ public class DeviceController {
         // 권한 정보 추가
         permissionHelper.addPermissionAttributes(user, model);
         model.addAttribute("device", deviceService.getDeviceById(id).orElseThrow());
-        model.addAttribute("schools", schoolPermissionService.getAccessibleSchools(user));
-        model.addAttribute("classrooms", classroomService.getAllClassrooms());
+        List<School> schoolEntities = schoolPermissionService.getAccessibleSchools(user);
+        model.addAttribute("schools", schoolEntities.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
+        model.addAttribute("classrooms", classroomService.getAllClassrooms().stream()
+                .map(c -> new ClassroomDto(c.getClassroomId(), c.getRoomName(), c.getXCoordinate(), c.getYCoordinate(), c.getWidth(), c.getHeight(), c.getDisplayOrder()))
+                .collect(Collectors.toList()));
         model.addAttribute("types", deviceService.getAllTypes());
-        // 이전 페이지 URL 전달 (장비목록/장비검사 등에서 돌아가기)
-        String referer = request != null ? request.getHeader("Referer") : null;
-        if (referer != null && !referer.contains("/device/modify")) {
-            model.addAttribute("returnUrl", referer);
+        // 이전 페이지 URL 전달: 쿼리 파라미터 returnUrl 우선, 없으면 Referer 사용 (장비목록/장비검사 등에서 돌아가기)
+        String returnUrlParam = request != null ? request.getParameter("returnUrl") : null;
+        if (returnUrlParam != null && !returnUrlParam.isBlank()) {
+            model.addAttribute("returnUrl", returnUrlParam);
+        } else {
+            String referer = request != null ? request.getHeader("Referer") : null;
+            if (referer != null && !referer.contains("/device/modify")) {
+                model.addAttribute("returnUrl", referer);
+            }
         }
         return "device/modify";
     }
@@ -737,12 +1013,17 @@ public class DeviceController {
             deviceService.updateDeviceWithHistory(device, user);
             redirectAttributes.addFlashAttribute("successMessage", "장비가 성공적으로 수정되었습니다.");
             if (returnUrl != null && !returnUrl.isBlank()) {
-                return "redirect:" + returnUrl;
+                try {
+                    String decoded = java.net.URLDecoder.decode(returnUrl, java.nio.charset.StandardCharsets.UTF_8);
+                    return "redirect:" + decoded;
+                } catch (Exception ex) {
+                    return "redirect:" + returnUrl;
+                }
             }
             return "redirect:/device/list";
         } catch (RuntimeException e) {
             log.error("장비 수정 중 오류 발생: {}", e.getMessage());
-            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            redirectAttributes.addFlashAttribute("errorMessage", resolveUserFriendlyErrorMessage(e, false));
             return "redirect:/device/modify/" + device.getDeviceId();
         }
     }
@@ -989,11 +1270,17 @@ public class DeviceController {
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=devices.xlsx");
         
+        // 1행 제목용: 필터링된 학교명 (schoolId가 있으면 해당 학교명 사용)
+        String filteredSchoolName = null;
+        if (schoolId != null) {
+            filteredSchoolName = schoolService.getSchoolById(schoolId).map(School::getSchoolName).orElse(null);
+        }
+        
         // 검사모드에서 엑셀 다운로드인지 확인 (세션에서 검사 데이터 가져오기)
         Map<Long, String> inspectionStatuses = null;
         // TODO: 세션에서 검사 데이터를 가져오는 로직 추가
         
-        deviceService.exportToExcel(sortedDevices, response.getOutputStream(), inspectionStatuses);
+        deviceService.exportToExcel(sortedDevices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
     }
     
     // 검사 데이터를 포함한 엑셀 다운로드
@@ -1116,12 +1403,15 @@ public class DeviceController {
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=devices_with_inspection.xlsx");
         
-        deviceService.exportToExcel(devices, response.getOutputStream(), inspectionStatuses);
+        String filteredSchoolName = (schoolId != null) ? schoolService.getSchoolById(schoolId).map(School::getSchoolName).orElse(null) : null;
+        deviceService.exportToExcel(devices, response.getOutputStream(), inspectionStatuses, filteredSchoolName);
     }
 
     @GetMapping("/map")
     public String showMap(Model model) {
-        model.addAttribute("schools", schoolService.getAllSchools());
+        model.addAttribute("schools", schoolService.getAllSchools().stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         return "device/map";
     }
 
@@ -1170,7 +1460,7 @@ public class DeviceController {
         } catch (Exception e) {
             log.error("검사 상태 저장 중 오류 발생", e);
             response.put("success", false);
-            response.put("message", "저장 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "검사 상태 저장"));
         }
         
         return ResponseEntity.ok(response);
@@ -1214,7 +1504,7 @@ public class DeviceController {
         } catch (Exception e) {
             log.error("검사 상태 로드 중 오류 발생", e);
             response.put("success", false);
-            response.put("message", "로드 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "검사 상태 로드"));
         }
         
         return ResponseEntity.ok(response);
@@ -1222,7 +1512,7 @@ public class DeviceController {
     
     @GetMapping("/api/schools")
     @ResponseBody
-    public ResponseEntity<List<Map<String, Object>>> getSchools() {
+    public ResponseEntity<List<SchoolDto>> getSchools() {
         try {
             // 권한 체크
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -1237,14 +1527,12 @@ public class DeviceController {
             
             // 사용자가 접근 가능한 학교 목록만 반환
             List<School> schools = schoolPermissionService.getAccessibleSchools(user);
-            List<Map<String, Object>> schoolList = schools.stream()
-                .map(school -> {
-                    Map<String, Object> schoolData = new HashMap<>();
-                    schoolData.put("schoolId", school.getSchoolId());
-                    schoolData.put("schoolName", school.getSchoolName());
-                    schoolData.put("address", ""); // School 엔티티에 address 필드가 없음
-                    return schoolData;
-                })
+            List<SchoolDto> schoolList = schools.stream()
+                .map(school -> new SchoolDto(
+                        school.getSchoolId(),
+                        school.getSchoolName(),
+                        school.getIp()
+                ))
                 .collect(Collectors.toList());
             
             return ResponseEntity.ok(schoolList);
@@ -1275,13 +1563,15 @@ public class DeviceController {
             return "redirect:/login";
         }
         
-        // 사용자가 접근 가능한 학교 목록
-        List<School> accessibleSchools = schoolPermissionService.getAccessibleSchools(user);
-        model.addAttribute("schools", accessibleSchools);
+        // 사용자가 접근 가능한 학교 목록 (뷰에는 DTO 전달)
+        List<School> accessibleSchoolEntities = schoolPermissionService.getAccessibleSchools(user);
+        model.addAttribute("schools", accessibleSchoolEntities.stream()
+                .map(s -> new SchoolDto(s.getSchoolId(), s.getSchoolName(), s.getIp()))
+                .collect(Collectors.toList()));
         
         // 검사자 목록 (사용자가 접근 가능한 학교의 검사자들)
         List<User> inspectors = userService.findInspectorsBySchools(
-            accessibleSchools.stream().map(School::getSchoolId).collect(Collectors.toList()));
+            accessibleSchoolEntities.stream().map(School::getSchoolId).collect(Collectors.toList()));
         model.addAttribute("inspectors", inspectors);
         
         // 검사 이력 조회
@@ -1296,7 +1586,7 @@ public class DeviceController {
             // 전체 검사 이력 (사용자가 접근 가능한 학교만)
             histories = deviceInspectionHistoryService.findRecentInspections(1000);
             // 권한이 있는 학교의 검사 이력만 필터링
-            List<Long> accessibleSchoolIds = accessibleSchools.stream()
+            List<Long> accessibleSchoolIds = accessibleSchoolEntities.stream()
                 .map(School::getSchoolId)
                 .collect(Collectors.toList());
             histories = histories.stream()
@@ -1333,32 +1623,30 @@ public class DeviceController {
             }
         }
         
-        // 학교명과 검사자명 추가
-        List<Map<String, Object>> historyList = histories.stream()
-            .map(history -> {
-                Map<String, Object> historyData = new HashMap<>();
-                historyData.put("id", history.getId());
-                historyData.put("inspectionDate", history.getInspectionDate());
-                historyData.put("schoolId", history.getSchoolId());
-                historyData.put("schoolName", schoolService.getSchoolById(history.getSchoolId())
-                    .map(School::getSchoolName).orElse("알 수 없음"));
-                historyData.put("inspectorId", history.getInspectorId());
-                historyData.put("inspectorName", userService.findById(history.getInspectorId())
-                    .map(User::getName).orElse("알 수 없음"));
-                historyData.put("confirmedCount", history.getConfirmedCount());
-                historyData.put("modifiedCount", history.getModifiedCount());
-                historyData.put("unconfirmedCount", history.getUnconfirmedCount());
-                historyData.put("totalCount", history.getTotalCount());
-                return historyData;
-            })
+        // 학교명·검사자명 포함 DTO 리스트로 뷰에 전달
+        List<DeviceInspectionHistoryDto> historyList = histories.stream()
+            .map(history -> new DeviceInspectionHistoryDto(
+                    history.getId(),
+                    history.getInspectionDate(),
+                    history.getSchoolId(),
+                    schoolService.getSchoolById(history.getSchoolId())
+                        .map(School::getSchoolName).orElse("알 수 없음"),
+                    history.getInspectorId(),
+                    userService.findById(history.getInspectorId())
+                        .map(User::getName).orElse("알 수 없음"),
+                    history.getConfirmedCount(),
+                    history.getModifiedCount(),
+                    history.getUnconfirmedCount(),
+                    history.getTotalCount()
+            ))
             .collect(Collectors.toList());
         
         // 통계 계산
         Map<String, Object> stats = new HashMap<>();
-        stats.put("confirmedCount", historyList.stream().mapToInt(h -> (Integer) h.get("confirmedCount")).sum());
-        stats.put("modifiedCount", historyList.stream().mapToInt(h -> (Integer) h.get("modifiedCount")).sum());
-        stats.put("unconfirmedCount", historyList.stream().mapToInt(h -> (Integer) h.get("unconfirmedCount")).sum());
-        stats.put("totalCount", historyList.stream().mapToInt(h -> (Integer) h.get("totalCount")).sum());
+        stats.put("confirmedCount", historyList.stream().mapToInt(DeviceInspectionHistoryDto::getConfirmedCount).sum());
+        stats.put("modifiedCount", historyList.stream().mapToInt(DeviceInspectionHistoryDto::getModifiedCount).sum());
+        stats.put("unconfirmedCount", historyList.stream().mapToInt(DeviceInspectionHistoryDto::getUnconfirmedCount).sum());
+        stats.put("totalCount", historyList.stream().mapToInt(DeviceInspectionHistoryDto::getTotalCount).sum());
         
         model.addAttribute("inspectionHistories", historyList);
         model.addAttribute("stats", stats);
@@ -1371,8 +1659,7 @@ public class DeviceController {
 
     @GetMapping("/api/classrooms")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public List<Classroom> getAllClassrooms() {
+    public List<ClassroomDto> getAllClassrooms() {
         List<Classroom> allClassrooms = classroomService.getAllClassrooms();
         // 교실 이름 기준으로 중복 제거하고 가나다순 정렬
         return allClassrooms.stream()
@@ -1386,20 +1673,68 @@ public class DeviceController {
             ))
             .stream()
             .sorted(Comparator.comparing(Classroom::getRoomName))
+            .map(c -> ClassroomDto.builder()
+                    .classroomId(c.getClassroomId())
+                    .roomName(c.getRoomName())
+                    .xCoordinate(c.getXCoordinate())
+                    .yCoordinate(c.getYCoordinate())
+                    .width(c.getWidth())
+                    .height(c.getHeight())
+                    .displayOrder(c.getDisplayOrder())
+                    .build())
             .collect(Collectors.toList());
     }
-
+    
     @GetMapping("/api/classrooms/{schoolId}")
     @ResponseBody
-    @JsonView(Views.Summary.class)
-    public List<Classroom> getClassrooms(@PathVariable Long schoolId) {
-        return classroomService.findBySchoolId(schoolId);
+    public List<ClassroomDto> getClassrooms(@PathVariable Long schoolId) {
+        return classroomService.findBySchoolId(schoolId).stream()
+                .map(c -> ClassroomDto.builder()
+                        .classroomId(c.getClassroomId())
+                        .roomName(c.getRoomName())
+                        .xCoordinate(c.getXCoordinate())
+                        .yCoordinate(c.getYCoordinate())
+                        .width(c.getWidth())
+                        .height(c.getHeight())
+                        .displayOrder(c.getDisplayOrder())
+                        .build())
+                .collect(Collectors.toList());
     }
 
+    /**
+     * 학교별 장비 목록 API (배치/맵용, API 1순위: DTO 반환)
+     */
     @GetMapping("/api/devices/{schoolId}")
     @ResponseBody
-    public List<Device> getDevicesBySchool(@PathVariable Long schoolId) {
-        return deviceService.findBySchool(schoolId);
+    public List<DeviceListDto> getDevicesBySchool(@PathVariable Long schoolId) {
+        List<Device> devices = deviceService.findBySchool(schoolId);
+        java.time.format.DateTimeFormatter dateFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy년 MM월");
+        return devices.stream()
+                .map(d -> {
+                    String uidDisplay = d.getUid() != null ? (d.getUid().getDisplayUid() != null ? d.getUid().getDisplayUid() : d.getUid().getDisplayId()) : "";
+                    String manageDisplay = d.getManage() != null ? d.getManage().getDisplayId() : "";
+                    String purchaseFormatted = d.getPurchaseDate() != null ? d.getPurchaseDate().format(dateFmt) : "";
+                    return DeviceListDto.builder()
+                            .deviceId(d.getDeviceId())
+                            .schoolName(d.getSchool() != null ? d.getSchool().getSchoolName() : "미지정")
+                            .uidDisplay(uidDisplay != null ? uidDisplay : "")
+                            .manageDisplay(manageDisplay != null ? manageDisplay : "")
+                            .type(d.getType() != null ? d.getType() : "")
+                            .operatorPosition(d.getOperator() != null ? d.getOperator().getPosition() : "")
+                            .operatorName(d.getOperator() != null ? d.getOperator().getName() : "")
+                            .manufacturer(d.getManufacturer())
+                            .modelName(d.getModelName())
+                            .purchaseDateFormatted(purchaseFormatted)
+                            .ipAddress(d.getIpAddress())
+                            .classroomId(d.getClassroom() != null ? d.getClassroom().getClassroomId() : null)
+                            .classroomName(d.getClassroom() != null && d.getClassroom().getRoomName() != null ? d.getClassroom().getRoomName() : "")
+                            .purpose(d.getPurpose())
+                            .setType(d.getSetType())
+                            .note(d.getNote())
+                            .unused(d.getUnused())
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     @PostMapping("/api/save-layout")
@@ -1650,7 +1985,7 @@ public class DeviceController {
         } catch (Exception e) {
             log.error("담당자 일괄 수정 중 오류: ", e);
             result.put("success", false);
-            result.put("error", e.getMessage());
+            result.put("error", com.inet.util.UserMessageUtils.toUserFriendly(e, "담당자 일괄 수정"));
         }
         return result;
     }

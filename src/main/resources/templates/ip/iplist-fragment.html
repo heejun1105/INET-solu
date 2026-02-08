@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+</head>
+<body>
+<div class="ip-list-fragment">
+    <div class="ip-fragment-toolbar" style="margin-bottom: 1rem; padding: 8px 0;">
+        <select id="ipFragmentSecondOctet" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 180px;"
+                onchange="if(window.refreshIpFragment) window.refreshIpFragment(this.value)">
+            <option value="all" th:selected="${selectedSecondOctet == null || selectedSecondOctet == 'all'}">전체 IP 대역</option>
+            <option th:each="octet : ${secondOctets}" th:value="${octet}" th:text="${'10.' + octet + '.' + (ipThirdOctet != null ? ipThirdOctet : 'x') + '.x'}"
+                    th:selected="${selectedSecondOctet != null && selectedSecondOctet == octet}"></option>
+        </select>
+        <span style="margin-left: 8px; color: #666; font-size: 14px;" th:text="${selectedSchool != null ? selectedSchool.schoolName : ''}">학교명</span>
+    </div>
+    <div th:if="${selectedSchool != null}">
+        <div th:if="${isAllView}" th:each="entry : ${ipListByOctet}">
+            <div class="ip-section-header" style="background: #f5f5f5; padding: 10px; margin: 20px 0 10px; border-radius: 4px; font-weight: bold;">
+                <span th:text="${'IP 대역: 10.' + entry.key + '.' + (ipThirdOctet != null ? ipThirdOctet : 'x') + '.x'}">IP 대역</span>
+            </div>
+            <div class="ip-grid">
+                <div th:each="ip : ${entry.value}" class="ip-item"
+                     th:classappend="${ip.device != null ? 'used' : ''} + ' ' + ${ip.number >= 245 && ip.number <= 254 ? 'ip-warning' : ''}"
+                     th:attr="data-ip-number=${ip.number}, data-device-id=${ip.device != null ? ip.device.deviceId : null}">
+                    <div class="ip-number" th:text="${ip.number}">1</div>
+                    <div class="ip-info" th:if="${ip.device != null}">
+                        <div class="device-type" th:text="${ip.device.type}">장비유형</div>
+                        <div class="manage-number" th:if="${ip.device.manage != null}"
+                             th:text="${(ip.device.manage.manageCate != null ? ip.device.manage.manageCate : '') +
+                                     (ip.device.manage.manageCate != null ? '-' : '') +
+                                     (ip.device.manage.year != null ? ip.device.manage.year + '-' : '') +
+                                     (ip.device.manage.manageNum != null ? #numbers.formatInteger(ip.device.manage.manageNum, 2) : '')}">
+                            관리번호
+                        </div>
+                        <div class="device-model" th:if="${ip.device.modelName != null}" th:text="${ip.device.modelName}">모델명</div>
+                        <div class="device-location" th:text="${ip.device.classroom != null ? ip.device.classroom.roomName : '위치 미지정'}">설치위치</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div th:if="${!isAllView}" class="ip-grid">
+            <div th:each="ip : ${ipList}" class="ip-item"
+                 th:classappend="${ip.device != null ? 'used' : ''} + ' ' + ${ip.number >= 245 && ip.number <= 254 ? 'ip-warning' : ''}"
+                 th:attr="data-ip-number=${ip.number}, data-device-id=${ip.device != null ? ip.device.deviceId : null}">
+                <div class="ip-number" th:text="${ip.number}">1</div>
+                <div class="ip-info" th:if="${ip.device != null}">
+                    <div class="device-type" th:text="${ip.device.type}">장비유형</div>
+                    <div class="manage-number" th:if="${ip.device.manage != null}"
+                         th:text="${(ip.device.manage.manageCate != null ? ip.device.manage.manageCate : '') +
+                                 (ip.device.manage.manageCate != null ? '-' : '') +
+                                 (ip.device.manage.year != null ? ip.device.manage.year + '-' : '') +
+                                 (ip.device.manage.manageNum != null ? #numbers.formatInteger(ip.device.manage.manageNum, 2) : '')}">
+                        관리번호
+                    </div>
+                    <div class="device-model" th:if="${ip.device.modelName != null}" th:text="${ip.device.modelName}">모델명</div>
+                    <div class="device-location" th:text="${ip.device.classroom != null ? ip.device.classroom.roomName : '위치 미지정'}">설치위치</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
