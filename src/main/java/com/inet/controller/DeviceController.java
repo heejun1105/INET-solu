@@ -50,6 +50,9 @@ import com.inet.config.PermissionHelper;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.nio.charset.StandardCharsets;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inet.entity.DeviceInspectionHistory;
 import com.inet.dto.DeviceListDto;
@@ -622,6 +625,7 @@ public class DeviceController {
                     .deviceId(d.getDeviceId())
                     .schoolName(d.getSchool() != null ? d.getSchool().getSchoolName() : "미지정")
                     .uidDisplay(uidDisplay != null ? uidDisplay : "")
+                    .cNo(d.getComsNo() != null ? d.getComsNo() : "")
                     .manageDisplay(manageDisplay != null ? manageDisplay : "")
                     .type(d.getType() != null ? d.getType() : "")
                     .operatorPosition(d.getOperator() != null ? d.getOperator().getPosition() : "")
@@ -895,7 +899,15 @@ public class DeviceController {
                         String manageCate, String manageCateCustom, String manageYear, String manageYearCustom, String manageNum, String manageNumCustom,
                         String uidCate, String uidCateCustom, String uidYear, String uidYearCustom, String uidNum, String uidNumCustom,
                         String purchaseYear, String purchaseMonth, Long idNumber, String returnUrl, RedirectAttributes redirectAttributes) {
-        
+        if (device == null || device.getDeviceId() == null) {
+            log.warn("Modify POST: device or deviceId is null");
+            return "redirect:/device/list";
+        }
+        if (device.getSchool() == null || device.getSchool().getSchoolId() == null) {
+            log.warn("Modify POST: device.school is null, redirecting to list");
+            redirectAttributes.addFlashAttribute("errorMessage", "학교 정보가 없습니다. 다시 시도해 주세요.");
+            return "redirect:/device/modify/" + device.getDeviceId();
+        }
         // 권한 체크 (학교별 권한 체크)
         User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, device.getSchool().getSchoolId(), redirectAttributes);
         if (user == null) {
@@ -1012,12 +1024,22 @@ public class DeviceController {
             // 장비 수정 및 히스토리 저장 (원본 장비는 서비스에서 조회)
             deviceService.updateDeviceWithHistory(device, user);
             redirectAttributes.addFlashAttribute("successMessage", "장비가 성공적으로 수정되었습니다.");
+            // returnUrl 리다이렉트: Location 헤더는 ASCII만 허용되므로 한글 등은 퍼센트 인코딩 필요
             if (returnUrl != null && !returnUrl.isBlank()) {
+                String trimmed = returnUrl.trim();
                 try {
-                    String decoded = java.net.URLDecoder.decode(returnUrl, java.nio.charset.StandardCharsets.UTF_8);
-                    return "redirect:" + decoded;
+                    String decoded = java.net.URLDecoder.decode(trimmed, StandardCharsets.UTF_8);
+                    if (decoded.startsWith("/") && !decoded.startsWith("//")) {
+                        String redirectTo = trimmed;
+                        if (!StandardCharsets.US_ASCII.newEncoder().canEncode(trimmed)) {
+                            String encoded = UriComponentsBuilder.fromUriString("http://localhost" + decoded)
+                                    .build().encode(StandardCharsets.UTF_8).toUriString();
+                            redirectTo = encoded.substring("http://localhost".length());
+                        }
+                        return "redirect:" + redirectTo;
+                    }
                 } catch (Exception ex) {
-                    return "redirect:" + returnUrl;
+                    log.debug("returnUrl decode failed: {}", returnUrl, ex);
                 }
             }
             return "redirect:/device/list";
@@ -1755,6 +1777,7 @@ public class DeviceController {
                             .deviceId(d.getDeviceId())
                             .schoolName(d.getSchool() != null ? d.getSchool().getSchoolName() : "미지정")
                             .uidDisplay(uidDisplay != null ? uidDisplay : "")
+                            .cNo(d.getComsNo() != null ? d.getComsNo() : "")
                             .manageDisplay(manageDisplay != null ? manageDisplay : "")
                             .type(d.getType() != null ? d.getType() : "")
                             .operatorPosition(d.getOperator() != null ? d.getOperator().getPosition() : "")

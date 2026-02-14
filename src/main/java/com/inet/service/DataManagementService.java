@@ -469,7 +469,12 @@ public class DataManagementService {
         // 1단계: 참조하는 엔티티들 먼저 삭제 (Device, WirelessAp)
         if (deleteDevices) {
             try {
-                // 위치 정보 먼저 삭제
+                // 장비 수정내역 먼저 삭제 (DeviceHistory가 Device FK 참조하므로 장비 삭제 전 필수)
+                int deletedDeviceHistory = deviceHistoryRepository.deleteByDeviceSchoolSchoolId(schoolId);
+                totalDeleted += deletedDeviceHistory;
+                logger.debug("Deleted {} device history records for school (before device delete)", deletedDeviceHistory);
+
+                // 위치 정보 삭제
                 int deletedDeviceLocations = deviceLocationRepository.deleteBySchoolId(schoolId);
                 totalDeleted += deletedDeviceLocations;
                 logger.debug("Deleted {} device location records", deletedDeviceLocations);

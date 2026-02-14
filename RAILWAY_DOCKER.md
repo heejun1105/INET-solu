@@ -46,19 +46,36 @@
 
 ---
 
-## 3. 환경 변수 (Railway)
+## 3. 환경 변수 (Railway) — DB 연결 필수
 
-Docker 이미지 안에서는 **DB 등은 환경 변수**로 넘깁니다.  
-**Variables** 탭에서 다음을 설정하세요.
+**Communications link failure / Connection refused** 가 나면 DB 연결 정보가 안 들어간 상태입니다.  
+앱 서비스(INET-solu Copy) **Variables** 탭에서 아래 세 개를 **반드시** 설정하세요.
 
-| 변수명 | 설명 | 예시 |
-|--------|------|------|
-| `SPRING_DATASOURCE_URL` | MySQL JDBC URL | `jdbc:mysql://mysql.railway.internal:3306/inet` |
-| `SPRING_DATASOURCE_USERNAME` | DB 사용자 | `root` |
-| `SPRING_DATASOURCE_PASSWORD` | DB 비밀번호 | (Railway MySQL에서 확인) |
-| `SPRING_PROFILES_ACTIVE` | 프로필 | `prod` (이미 Dockerfile 기본값) |
+| 변수명 | 설명 | 예시/확인 방법 |
+|--------|------|----------------|
+| `SPRING_DATASOURCE_URL` | MySQL JDBC URL | 아래 "URL 만드는 방법" 참고 |
+| `SPRING_DATASOURCE_USERNAME` | DB 사용자 | MySQL 서비스 Variables의 `MYSQLUSER` 또는 `root` |
+| `SPRING_DATASOURCE_PASSWORD` | DB 비밀번호 | MySQL 서비스 Variables의 `MYSQLPASSWORD` |
 
-`PORT` 는 Railway가 자동으로 넣어 주므로 따로 설정하지 않아도 됩니다.
+### URL 만드는 방법
+
+1. Railway 대시보드에서 **MySQL 서비스** 클릭 → **Variables** (또는 **Connect**) 탭 이동.
+2. 다음 변수 값을 확인합니다. (이름은 Railway 버전에 따라 다를 수 있음.)
+   - 호스트: `MYSQLHOST` 또는 `MYSQL_URL` 에서 추출
+   - 포트: `MYSQLPORT` (보통 `3306`)
+   - DB 이름: `MYSQLDATABASE` (예: `railway` 또는 `inet`)
+   - 사용자: `MYSQLUSER`
+   - 비밀번호: `MYSQLPASSWORD`
+3. **같은 프로젝트 내부**에서 접속할 때는 **Private Network** 주소를 씁니다.
+   - 예: `mysql.railway.internal` (MySQL 서비스 이름이 `mysql` 일 때)
+   - 또는 Variables에 나온 `MYSQLHOST` / 내부 호스트명 그대로 사용
+4. `SPRING_DATASOURCE_URL` 예시:
+   ```text
+   jdbc:mysql://mysql.railway.internal:3306/inet?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+   ```
+   - `mysql.railway.internal` 대신 실제 MySQL 호스트로 바꾸고, `inet` 대신 실제 DB 이름으로 바꾸세요.
+
+변수 저장 후 **Redeploy** 하면 앱이 DB에 연결을 시도합니다. `PORT` 는 Railway가 자동으로 넣어 주므로 설정하지 않아도 됩니다.
 
 ---
 

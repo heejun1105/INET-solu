@@ -20,6 +20,19 @@ body * {
     background-color: #fff;
 }
 
+/* 장비 목록 페이지: 데스크톱에서 컨테이너 확장 + 화면 중앙 배치 (모바일/태블릿 유지) */
+@media (min-width: 1024px) {
+    body.device-list-page .container {
+        max-width: 1580px;
+        margin-left: auto;
+        margin-right: auto;
+        width: 100%;
+    }
+    body.device-list-page .device-list-container {
+        width: 100%;
+    }
+}
+
 .need:before {
     content: "*";
     color: #ff4757;
@@ -149,23 +162,33 @@ input:focus, textarea:focus, select:focus {
     background-color: #f8fafc;
 }
 
-/* 테이블 컬럼 너비 지정 - 새로운 구조에 맞게 조정 */
-.device-table th:nth-child(1), .device-table td:nth-child(1) { width: 80px; } /* 학교 */
-.device-table th:nth-child(2), .device-table td:nth-child(2) { width: 90px; } /* 고유번호 */
-.device-table th:nth-child(3), .device-table td:nth-child(3) { width: 90px; } /* 관리번호 */
-.device-table th:nth-child(4), .device-table td:nth-child(4) { width: 70px; } /* 유형 */
-.device-table th:nth-child(5), .device-table td:nth-child(5) { width: 60px; } /* 직위 */
-.device-table th:nth-child(6), .device-table td:nth-child(6) { width: 70px; } /* 담당자 */
-.device-table th:nth-child(7), .device-table td:nth-child(7) { width: 80px; } /* 제조사 */
-.device-table th:nth-child(8), .device-table td:nth-child(8) { width: 100px; } /* 모델명 */
-.device-table th:nth-child(9), .device-table td:nth-child(9) { width: 90px; } /* 구매일자 */
-.device-table th:nth-child(10), .device-table td:nth-child(10) { width: 100px; } /* IP주소 */
-.device-table th:nth-child(11), .device-table td:nth-child(11) { width: 70px; } /* 교실 */
-.device-table th:nth-child(12), .device-table td:nth-child(12) { width: 70px; } /* 용도 */
-.device-table th:nth-child(13), .device-table td:nth-child(13) { width: 80px; } /* 세트분류 */
-.device-table th:nth-child(14), .device-table td:nth-child(14) { width: 100px; } /* 비고 */
-.device-table th:nth-child(15), .device-table td:nth-child(15) { width: 50px; } /* 불용 */
-.device-table th:nth-child(16), .device-table td:nth-child(16) { width: 90px; } /* 관리 */
+/* 테이블 컬럼 너비 지정 (CNo 추가: 고유번호와 관리번호 사이) */
+.device-table th:nth-child(1), .device-table td:nth-child(1) { width: 80px; }   /* 학교 */
+.device-table th:nth-child(2), .device-table td:nth-child(2) { width: 90px; }   /* 고유번호 */
+.device-table th:nth-child(3), .device-table td:nth-child(3) { width: 90px; }   /* CNo */
+.device-table th:nth-child(4), .device-table td:nth-child(4) { width: 90px; }   /* 관리번호 */
+.device-table th:nth-child(5), .device-table td:nth-child(5) { width: 70px; }   /* 유형 */
+.device-table th:nth-child(6), .device-table td:nth-child(6) { width: 60px; }   /* 직위 */
+.device-table th:nth-child(7), .device-table td:nth-child(7) { width: 70px; }  /* 담당자 */
+.device-table th:nth-child(8), .device-table td:nth-child(8) { width: 80px; }   /* 제조사 */
+.device-table th:nth-child(9), .device-table td:nth-child(9) { width: 100px; }  /* 모델명 */
+.device-table th:nth-child(10), .device-table td:nth-child(10) { width: 90px; } /* 구매일자 */
+.device-table th:nth-child(11), .device-table td:nth-child(11) { width: 100px; } /* IP주소 */
+.device-table th:nth-child(12), .device-table td:nth-child(12) { width: 70px; } /* 교실 */
+.device-table th:nth-child(13), .device-table td:nth-child(13) { width: 70px; } /* 용도 */
+.device-table th:nth-child(14), .device-table td:nth-child(14) { width: 80px; } /* 세트분류 */
+.device-table th:nth-child(15), .device-table td:nth-child(15) { width: 100px; } /* 비고 */
+.device-table th:nth-child(16), .device-table td:nth-child(16) { width: 50px; }  /* 불용 */
+.device-table th:nth-child(17), .device-table td:nth-child(17) { width: 90px; }  /* 관리 */
+.device-table th:nth-child(18), .device-table td:nth-child(18) { width: 80px; }  /* 검사확인 */
+
+/* 데스크톱에서만 장비 목록 테이블 너비 확장 (CNo 컬럼 추가, 모바일/태블릿 미적용) */
+@media (min-width: 1024px) {
+    .device-list-container .device-table {
+        min-width: 1420px;
+        width: 100%;
+    }
+}
 
 /* 유형 컬럼 스타일 - 4글자까지 줄바꿈 안되게 */
 .device-type {
@@ -177,50 +200,51 @@ input:focus, textarea:focus, select:focus {
     white-space: nowrap;
 }
 
-/* 고유번호와 관리번호 컬럼 스타일 - 글씨 크기 작게 */
+/* 고유번호, CNo, 관리번호 컬럼 스타일 - 글씨 크기 작게 */
 .device-table td:nth-child(2),
-.device-table td:nth-child(3) {
+.device-table td:nth-child(3),
+.device-table td:nth-child(4) {
     font-size: 11px;
     font-family: 'Consolas', monospace;
     letter-spacing: -0.3px;
 }
 
 /* 제조사 컬럼 스타일 - 글씨 크기 작게 */
-.device-table td:nth-child(7) {
+.device-table td:nth-child(8) {
     font-size: 11px;
     letter-spacing: -0.3px;
 }
 
 /* IP 주소 컬럼 스타일 - 줄바꿈 안되게 */
-.device-table th:nth-child(10), .device-table td:nth-child(10) {
+.device-table th:nth-child(11), .device-table td:nth-child(11) {
     white-space: nowrap;
     font-family: 'Consolas', monospace;
     font-size: 12px;
 }
 
 /* 불용 컬럼 스타일 */
-.device-table td:nth-child(15) {
+.device-table td:nth-child(16) {
     text-align: center;
     font-weight: 600;
 }
 
 /* 불용 상태에 따른 색상 */
-.device-table tr:has(td:nth-child(15):contains('Y')) {
+.device-table tr:has(td:nth-child(16):contains('Y')) {
     background-color: #fef2f2;
 }
 
-.device-table td:nth-child(15):contains('Y') {
+.device-table td:nth-child(16):contains('Y') {
     color: #dc2626;
 }
 
-.device-table td:nth-child(15):contains('N') {
+.device-table td:nth-child(16):contains('N') {
     color: #16a34a;
 }
 
 @media (max-width: 1220px) {
     .device-type, 
     .ip-address,
-    .device-table td:nth-child(10) {
+    .device-table td:nth-child(11) {
         white-space: normal;
     }
 }

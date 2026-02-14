@@ -285,6 +285,39 @@
             flex: 0.8;
         }
 
+        /* 모바일/태블릿: 고유번호·관리번호 각각 다른 줄 (고유번호 블록 → 관리번호 블록) */
+        @media (max-width: 1024px) {
+            .number-fields-wrapper {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                grid-template-rows: auto auto auto auto auto auto;
+                gap: 0.5rem 0.75rem;
+                margin-bottom: 1rem;
+            }
+            .number-fields-wrapper .form-group-modern,
+            .number-fields-wrapper .multi-input-container {
+                display: contents;
+            }
+            /* 고유번호: 1행 라벨, 2행 셀렉트, 3행 직접입력 */
+            .number-fields-wrapper .form-group-modern:nth-child(1) > label { grid-column: 1 / 4; grid-row: 1; margin-bottom: 0; }
+            .number-fields-wrapper #uidCate { grid-column: 1; grid-row: 2; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #uidCateInput { grid-column: 1; grid-row: 3; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #uidYear { grid-column: 2; grid-row: 2; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #uidYearInput { grid-column: 2; grid-row: 3; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #uidNum { grid-column: 3; grid-row: 2; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #uidNumInput { grid-column: 3; grid-row: 3; width: 100%; box-sizing: border-box; min-width: 0; }
+            /* 관리번호: 4행 라벨, 5행 셀렉트, 6행 직접입력 */
+            .number-fields-wrapper .form-group-modern:nth-child(2) > label { grid-column: 1 / 4; grid-row: 4; margin-bottom: 0; }
+            .number-fields-wrapper #manageCate { grid-column: 1; grid-row: 5; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #manageCateInput { grid-column: 1; grid-row: 6; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #manageYear { grid-column: 2; grid-row: 5; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #manageYearInput { grid-column: 2; grid-row: 6; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #manageNum { grid-column: 3; grid-row: 5; width: 100%; box-sizing: border-box; min-width: 0; }
+            .number-fields-wrapper #manageNumInput { grid-column: 3; grid-row: 6; width: 100%; box-sizing: border-box; min-width: 0; }
+            /* 고유번호·관리번호 셀렉트 글자 크기 80% */
+            .number-fields-wrapper select { font-size: 80%; }
+        }
+
         /* 버튼 스타일 */
         .form-buttons {
             display: flex;
@@ -305,28 +338,29 @@
             font-size: 1rem;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
+            min-width: 140px;
         }
 
-        .btn-primary-modern {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        /* 장비 등록/수정 메인 버튼 (파란색) */
+        .btn-device-action {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
             color: white;
-            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
         }
-
-        .btn-primary-modern:hover {
+        .btn-device-action:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
             color: white;
         }
-
-        .btn-secondary-modern {
+        /* 목록 버튼 (모든 페이지 동일 회색) */
+        .btn-list {
             background: #6b7280;
             color: white;
             border: 2px solid #6b7280;
         }
-
-        .btn-secondary-modern:hover {
+        .btn-list:hover {
             background: #4b5563;
             border-color: #4b5563;
             transform: translateY(-2px);
@@ -467,10 +501,20 @@
             .multi-input-container {
                 flex-direction: column;
             }
+            /* 도입일자는 한 줄(일자) 유지 */
+            .form-group-modern.purchase-date-row .multi-input-container {
+                flex-direction: row;
+                flex-wrap: nowrap;
+            }
 
             .form-buttons {
                 flex-direction: column;
                 align-items: center;
+            }
+
+            .btn-modern {
+                width: 100%;
+                max-width: 300px;
             }
         }
 
@@ -588,6 +632,7 @@
                                 <input type="text" id="typeInput" name="typeCustom" placeholder="직접 입력" style="display:none; margin-top: 8px;">
                             </div>
 
+                        <div class="number-fields-wrapper">
                         <div class="form-group-modern full-width">
                             <label class="required">
                                 <i class="fas fa-fingerprint"></i>
@@ -642,7 +687,16 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div class="form-group-modern full-width">
+                            <label>
+                                <i class="fas fa-barcode"></i>
+                                COMSNo
+                            </label>
+                            <input type="text" name="comsNo" placeholder="COMSNo (선택)">
+                        </div>
                     </div>
+                </div>
 
                     <!-- 장비 상세 섹션 -->
                 <div class="form-card">
@@ -667,7 +721,7 @@
                             <input type="text" th:field="*{modelName}" placeholder="모델명을 입력하세요">
                             </div>
 
-                        <div class="form-group-modern">
+                        <div class="form-group-modern purchase-date-row">
                             <label>
                                 <i class="fas fa-calendar-day"></i>
                                 도입일자
@@ -705,12 +759,14 @@
                                 <label style="margin-bottom: 0;">
                                     <i class="fas fa-network-wired"></i>
                                     IP주소
+                                    <span id="schoolIpDisplayRegister" style="font-weight: normal; color: #64748b; margin-left: 0.5rem;">학교 IP : -</span>
                                 </label>
                                 <button type="button" id="ipStatusBtnRegister" style="padding: 0.375rem 0.75rem; background-color: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.75rem; white-space: nowrap; height: fit-content;">
                                     <i class="fas fa-list"></i> IP 현황
                                 </button>
                             </div>
-                            <input type="text" id="ipAddressInputRegister" th:field="*{ipAddress}" placeholder="예: 10.101.x.x">
+                            <input type="text" id="ipAddressInputRegister" th:field="*{ipAddress}">
+                            <span id="ipAddressErrorMsgRegister" class="duplicate-msg" style="display: none; color: #dc2626; font-size: 0.875rem; margin-top: 4px;"></span>
                             </div>
 
                         <div class="form-group-modern">
@@ -778,11 +834,11 @@
                     </div>
 
                     <div class="form-buttons">
-                    <button type="submit" class="btn-modern btn-primary-modern">
+                    <button type="submit" class="btn-modern btn-device-action">
                         <i class="fas fa-save"></i>
                         등록
                     </button>
-                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/device/list}" class="btn-modern btn-secondary-modern">
+                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/device/list}" class="btn-modern btn-list">
                         <i class="fas fa-list"></i>
                         목록
                     </a>
@@ -1240,19 +1296,32 @@
             if (this.value) {
                 console.log('학교 선택됨 - API 호출 시작:', this.value);
                 loadManageCates(this.value);
-                
-                // 고유번호 카테고리 목록도 로드
                 loadUidCates(this.value);
-                
-                // 교실 목록도 로드
                 loadClassrooms(this.value);
+                var opt = this.options[this.selectedIndex];
+                var schoolIpSpan = document.getElementById('schoolIpDisplayRegister');
+                if (schoolIpSpan) schoolIpSpan.textContent = '학교 IP : ' + (opt && opt.getAttribute('data-ip') ? opt.getAttribute('data-ip') : 'x');
             } else {
                 console.log('학교 선택 해제됨');
-                // 교실 선택 초기화
+                var schoolIpSpan = document.getElementById('schoolIpDisplayRegister');
+                if (schoolIpSpan) schoolIpSpan.textContent = '학교 IP : -';
                 const locationSelect = document.getElementById('locationSelect');
                 locationSelect.innerHTML = '<option value="">위치 선택</option><option value="CUSTOM">직접입력</option>';
             }
         });
+        // 초기 로드 시 학교 IP 표시
+        (function() {
+            var sel = document.getElementById('schoolSelectRegister');
+            var span = document.getElementById('schoolIpDisplayRegister');
+            if (sel && span) {
+                if (sel.value) {
+                    var opt = sel.options[sel.selectedIndex];
+                    span.textContent = '학교 IP : ' + (opt && opt.getAttribute('data-ip') ? opt.getAttribute('data-ip') : 'x');
+                } else {
+                    span.textContent = '학교 IP : -';
+                }
+            }
+        })();
             
             // 관리번호 카테고리 선택 이벤트
             manageCate.addEventListener('change', function() {
@@ -1476,34 +1545,87 @@
             }
         }
 
-        // 폼 제출 전 유효성 검사
+        // IP 사용불가/중복 메시지 표시 (등록: deviceId 없음)
+        (function() {
+            var ipInput = document.getElementById('ipAddressInputRegister');
+            var ipMsg = document.getElementById('ipAddressErrorMsgRegister');
+            var schoolSelect = document.getElementById('schoolSelectRegister');
+            if (ipInput && ipMsg && schoolSelect) {
+                ipInput.addEventListener('blur', function() {
+                    var ip = (this.value || '').trim();
+                    var schoolId = schoolSelect.value;
+                    ipMsg.style.display = 'none';
+                    ipMsg.textContent = '';
+                    if (!ip || !schoolId) return;
+                    var url = '/ip/api/check-ip?schoolId=' + encodeURIComponent(schoolId) + '&ipAddress=' + encodeURIComponent(ip);
+                    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+                        if (data.disabled) {
+                            ipMsg.textContent = '사용불가한 ip입니다.';
+                            ipMsg.style.display = 'inline';
+                        } else if (data.duplicate) {
+                            ipMsg.textContent = '중복인 ip입니다.';
+                            ipMsg.style.display = 'inline';
+                        }
+                    }).catch(function() {});
+                });
+            }
+        })();
+
+        // 폼 제출 전 유효성 검사 (제출 시에도 IP 검사 실행)
         document.getElementById('deviceForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            
-            // 필수 필드 검사
-            const requiredFields = document.querySelectorAll('[required]');
-            let isValid = true;
-            
-            requiredFields.forEach(field => {
-                if (!field.value) {
-                    isValid = false;
-                    // form-group-modern 클래스 사용
-                    const formGroup = field.closest('.form-group-modern');
-                    if (formGroup) {
-                        formGroup.classList.add('has-error');
-                    }
-                } else {
-                    const formGroup = field.closest('.form-group-modern');
-                    if (formGroup) {
-                        formGroup.classList.remove('has-error');
-                    }
+            var form = this;
+            var ipInput = document.getElementById('ipAddressInputRegister');
+            var ipErrorMsg = document.getElementById('ipAddressErrorMsgRegister');
+            var schoolSelect = document.getElementById('schoolSelectRegister');
+            var ip = ipInput && (ipInput.value || '').trim();
+            var schoolId = schoolSelect && schoolSelect.value;
+
+            function doSubmit() {
+                if (ipErrorMsg && ipErrorMsg.style.display === 'inline') {
+                    alert('IP 주소를 확인해주세요. 사용불가 또는 중복인 IP는 등록할 수 없습니다.');
+                    return;
                 }
-            });
-            
-            if (isValid) {
-                this.submit();
+                var requiredFields = document.querySelectorAll('[required]');
+                var isValid = true;
+                requiredFields.forEach(function(field) {
+                    if (!field.value) {
+                        isValid = false;
+                        var formGroup = field.closest('.form-group-modern');
+                        if (formGroup) formGroup.classList.add('has-error');
+                    } else {
+                        var formGroup = field.closest('.form-group-modern');
+                        if (formGroup) formGroup.classList.remove('has-error');
+                    }
+                });
+                if (isValid) {
+                    setTimeout(function() { form.submit(); }, 0);
+                } else {
+                    alert('필수 항목을 모두 입력해주세요.');
+                }
+            }
+
+            if (ip && schoolId && ipErrorMsg) {
+                ipErrorMsg.style.display = 'none';
+                ipErrorMsg.textContent = '';
+                var url = '/ip/api/check-ip?schoolId=' + encodeURIComponent(schoolId) + '&ipAddress=' + encodeURIComponent(ip);
+                fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.disabled) {
+                        ipErrorMsg.textContent = '사용불가한 ip입니다.';
+                        ipErrorMsg.style.display = 'inline';
+                        alert('IP 주소를 확인해주세요. 사용불가 또는 중복인 IP는 등록할 수 없습니다.');
+                        return;
+                    }
+                    if (data.duplicate) {
+                        ipErrorMsg.textContent = '중복인 ip입니다.';
+                        ipErrorMsg.style.display = 'inline';
+                        alert('IP 주소를 확인해주세요. 사용불가 또는 중복인 IP는 등록할 수 없습니다.');
+                        return;
+                    }
+                    doSubmit();
+                }).catch(function() { doSubmit(); });
             } else {
-                alert('필수 항목을 모두 입력해주세요.');
+                doSubmit();
             }
         });
 

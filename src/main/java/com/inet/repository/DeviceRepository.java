@@ -102,4 +102,8 @@ public interface DeviceRepository extends JpaRepository<Device, Long> {
     
     // IP 주소로 장비 조회 (등록 시) - List 사용 시 동일 IP 다건 있어도 NonUniqueResultException 방지
     List<Device> findByIpAddress(String ipAddress);
+
+    @Query("SELECT COUNT(d) > 0 FROM Device d WHERE d.school.schoolId = :schoolId AND d.ipAddress = :ipAddress")
+    boolean existsBySchool_SchoolIdAndIpAddress(@org.springframework.data.repository.query.Param("schoolId") Long schoolId,
+                                               @org.springframework.data.repository.query.Param("ipAddress") String ipAddress);
 } 

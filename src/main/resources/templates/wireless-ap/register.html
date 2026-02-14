@@ -236,32 +236,32 @@
             font-size: 1rem;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
             min-width: 140px;
-            justify-content: center;
         }
         
-        .btn-primary-modern {
+        /* 무선 AP 등록/수정 메인 버튼 (초록색) */
+        .btn-ap-action {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
         }
-        
-        .btn-primary-modern:hover {
+        .btn-ap-action:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
             color: white;
         }
-        
-        .btn-secondary-modern {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        /* 목록 버튼 (모든 페이지 동일 회색) */
+        .btn-list {
+            background: #6b7280;
             color: white;
-            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+            border: 2px solid #6b7280;
         }
-        
-        .btn-secondary-modern:hover {
+        .btn-list:hover {
+            background: #4b5563;
+            border-color: #4b5563;
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
             color: white;
         }
 
@@ -558,14 +558,14 @@
 
                 <!-- 버튼 영역 -->
                     <div class="form-buttons">
-                    <button type="submit" class="btn-modern btn-primary-modern">
-                        <i class="fas fa-plus" style="color: white;"></i>
-                        등록하기
-                        </button>
-                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/wireless-ap/list}" class="btn-modern btn-secondary-modern">
-                        <i class="fas fa-times" style="color: white;"></i>
-                        취소
-                        </a>
+                    <button type="submit" class="btn-modern btn-ap-action">
+                        <i class="fas fa-save"></i>
+                        등록
+                    </button>
+                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/wireless-ap/list}" class="btn-modern btn-list">
+                        <i class="fas fa-list"></i>
+                        목록
+                    </a>
                     </div>
                 </form>
             </div>

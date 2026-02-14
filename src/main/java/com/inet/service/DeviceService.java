@@ -52,6 +52,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -71,12 +72,13 @@ public class DeviceService {
     private final UidService uidService;
     private final DeviceHistoryService deviceHistoryService;
     private final ManageService manageService;
+    private final DisabledIpService disabledIpService;
     
     public DeviceService(DeviceRepository deviceRepository, SchoolRepository schoolRepository, 
                         ClassroomRepository classroomRepository, OperatorService operatorService,
                         ManageRepository manageRepository, ClassroomService classroomService,
                         UidService uidService, DeviceHistoryService deviceHistoryService,
-                        ManageService manageService) {
+                        ManageService manageService, DisabledIpService disabledIpService) {
         this.deviceRepository = deviceRepository;
         this.schoolRepository = schoolRepository;
         this.classroomRepository = classroomRepository;
@@ -86,6 +88,30 @@ public class DeviceService {
         this.uidService = uidService;
         this.deviceHistoryService = deviceHistoryService;
         this.manageService = manageService;
+        this.disabledIpService = disabledIpService;
+    }
+    
+    /**
+     * 장비 등록/수정 화면에서 IP 사용불가·중복 여부 조회 (GET /ip/api/check-ip)
+     * @param excludeDeviceId 수정 시 자기 자신 제외용, 등록 시 null
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Boolean> checkIpStatus(Long schoolId, String ipAddress, Long excludeDeviceId) {
+        boolean disabled = false;
+        boolean duplicate = false;
+        if (schoolId != null && ipAddress != null && !ipAddress.isBlank()) {
+            String ip = DisabledIpService.normalizeIp(ipAddress.trim());
+            disabled = disabledIpService.isDisabled(schoolId, ip);
+            if (excludeDeviceId != null) {
+                List<Device> others = deviceRepository.findByIpAddressExcludingDevice(ip, excludeDeviceId);
+                duplicate = others.stream()
+                    .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+            } else {
+                duplicate = deviceRepository.findByIpAddress(ip).stream()
+                    .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+            }
+        }
+        return Map.of("disabled", disabled, "duplicate", duplicate);
     }
     
     @PersistenceContext
@@ -107,9 +133,14 @@ public class DeviceService {
                 device.getManage().getManageNum());
         }
         
-        // IP 주소 중복 검증
+        // IP 주소: 정규화 후 사용불가·중복 검증
         if (device.getIpAddress() != null && !device.getIpAddress().trim().isEmpty()) {
-            List<Device> existingList = deviceRepository.findByIpAddress(device.getIpAddress().trim());
+            String ip = DisabledIpService.normalizeIp(device.getIpAddress());
+            device.setIpAddress(ip);
+            if (device.getSchool() != null && disabledIpService.isDisabled(device.getSchool().getSchoolId(), ip)) {
+                throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 사용불가 IP입니다. IP 대장에서 해제 후 다시 시도해 주세요.");
+            }
+            List<Device> existingList = deviceRepository.findByIpAddress(ip);
             if (!existingList.isEmpty()) {
                 Device existing = existingList.get(0);
                 String locationInfo = existing.getClassroom() != null && existing.getClassroom().getRoomName() != null 
@@ -235,6 +266,32 @@ public class DeviceService {
      */
     @Transactional
     public void updateDeviceWithHistory(Device updatedDevice, User modifiedBy) {
+        // IP 주소 정규화 및 사용불가·중복 검증 (자기 자신 제외)
+        if (updatedDevice.getIpAddress() != null && !updatedDevice.getIpAddress().trim().isEmpty()) {
+            String ip = DisabledIpService.normalizeIp(updatedDevice.getIpAddress());
+            updatedDevice.setIpAddress(ip);
+            if (updatedDevice.getSchool() != null) {
+            Long schoolId = updatedDevice.getSchool().getSchoolId();
+            if (disabledIpService.isDisabled(schoolId, ip)) {
+                throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 사용불가 IP입니다. IP 대장에서 해제 후 다시 시도해 주세요.");
+            }
+            List<Device> others = deviceRepository.findByIpAddressExcludingDevice(ip, updatedDevice.getDeviceId());
+            boolean duplicate = others.stream()
+                .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+            if (duplicate) {
+                Device existing = others.stream()
+                    .filter(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId))
+                    .findFirst().orElse(null);
+                String locationInfo = existing != null && existing.getClassroom() != null && existing.getClassroom().getRoomName() != null
+                    ? existing.getClassroom().getRoomName() : "위치 미지정";
+                String uidInfo = existing != null && existing.getUid() != null
+                    ? (existing.getUid().getCate() + "-" + existing.getUid().getMfgYear() + "-" + String.format("%04d", existing.getUid().getIdNumber()))
+                    : "미지정";
+                throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요. (기존 장비: 위치 " + locationInfo + ", 고유번호 " + uidInfo + ")");
+            }
+            }
+        }
+        
         // 데이터베이스에서 원본 장비 정보를 다시 조회 (JPA 영속성 컨텍스트 문제 방지)
         Device originalDevice = deviceRepository.findById(updatedDevice.getDeviceId())
                 .orElseThrow(() -> new RuntimeException("원본 장비를 찾을 수 없습니다: " + updatedDevice.getDeviceId()));
@@ -296,6 +353,12 @@ public class DeviceService {
             changeCount++;
             deviceHistoryService.saveDeviceHistory(updatedDevice, "note", 
                 originalDevice.getNote(), updatedDevice.getNote(), modifiedBy);
+        }
+        
+        if (!equals(originalDevice.getComsNo(), updatedDevice.getComsNo())) {
+            changeCount++;
+            deviceHistoryService.saveDeviceHistory(updatedDevice, "comsNo",
+                originalDevice.getComsNo(), updatedDevice.getComsNo(), modifiedBy);
         }
         
         // 연관 엔티티 변경사항 확인
@@ -794,7 +857,7 @@ public class DeviceService {
         headerStyle.setAlignment(HorizontalAlignment.CENTER);
         headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
         headerStyle.setWrapText(true); // 셀에 맞춤
-        String[] headers = {"No", "고유번호", "관리번호", "종류", "직위", "취급자", "제조사", "모델명", "도입일자", "현IP주소", "설치장소", "용도", "세트분류", "비고"};
+        String[] headers = {"No", "고유번호", "CNo", "관리번호", "종류", "직위", "취급자", "제조사", "모델명", "도입일자", "현IP주소", "설치장소", "용도", "세트분류", "비고"};
         if (hasInspectionStatus) {
             // 검사상태 컬럼 추가
             String[] extendedHeaders = new String[headers.length + 1];
@@ -818,13 +881,12 @@ public class DeviceService {
             Row row = sheet.createRow(rowNum++);
             row.setHeightInPoints(25); // 데이터 행 높이 25
             
-            // 각 열에 데이터 추가 및 스타일 적용
-            int totalCols = hasInspectionStatus ? 15 : 14; // 검사상태 컬럼 포함 여부
+            // 각 열에 데이터 추가 및 스타일 적용 (CNo 컬럼 포함)
+            int totalCols = hasInspectionStatus ? 16 : 15;
             for (int col = 0; col < totalCols; col++) {
                 Cell cell = row.createCell(col);
                 cell.setCellStyle(dataStyle);
                 
-                // 각 열의 데이터 설정
                 switch (col) {
                     case 0: // No (순번)
                         cell.setCellValue(i + 1);
@@ -836,7 +898,10 @@ public class DeviceService {
                         }
                         cell.setCellValue(uidDisplay);
                         break;
-                    case 2: // 관리번호
+                    case 2: // CNo (COMSNo)
+                        cell.setCellValue(device.getComsNo() != null ? device.getComsNo() : "");
+                        break;
+                    case 3: // 관리번호
                         String manageNo = "";
                         Manage manage = device.getManage();
                         if (manage != null) {
@@ -847,40 +912,40 @@ public class DeviceService {
                         }
                         cell.setCellValue(manageNo);
                         break;
-                    case 3: // 종류
+                    case 4: // 종류
                         cell.setCellValue(device.getType() != null ? device.getType() : "");
                         break;
-                    case 4: // 직위
+                    case 5: // 직위
                         cell.setCellValue(device.getOperator() != null && device.getOperator().getPosition() != null ? device.getOperator().getPosition() : "");
                         break;
-                    case 5: // 취급자
+                    case 6: // 취급자
                         cell.setCellValue(device.getOperator() != null && device.getOperator().getName() != null ? device.getOperator().getName() : "");
                         break;
-                    case 6: // 제조사
+                    case 7: // 제조사
                         cell.setCellValue(device.getManufacturer() != null ? device.getManufacturer() : "");
                         break;
-                    case 7: // 모델명
+                    case 8: // 모델명
                         cell.setCellValue(device.getModelName() != null ? device.getModelName() : "");
                         break;
-                    case 8: // 도입일자
+                    case 9: // 도입일자
                         cell.setCellValue(device.getPurchaseDate() != null ? device.getPurchaseDate().toString() : "");
                         break;
-                    case 9: // 현IP주소
+                    case 10: // 현IP주소
                         cell.setCellValue(device.getIpAddress() != null ? device.getIpAddress() : "");
                         break;
-                    case 10: // 설치장소
+                    case 11: // 설치장소
                         cell.setCellValue(device.getClassroom() != null && device.getClassroom().getRoomName() != null ? device.getClassroom().getRoomName() : "");
                         break;
-                    case 11: // 용도
+                    case 12: // 용도
                         cell.setCellValue(device.getPurpose() != null ? device.getPurpose() : "");
                         break;
-                    case 12: // 세트분류
+                    case 13: // 세트분류
                         cell.setCellValue(device.getSetType() != null ? device.getSetType() : "");
                         break;
-                    case 13: // 비고
+                    case 14: // 비고
                         cell.setCellValue(device.getNote() != null ? device.getNote() : "");
                         break;
-                    case 14: // 검사상태 (검사 모드일 때만)
+                    case 15: // 검사상태 (검사 모드일 때만)
                         if (hasInspectionStatus && inspectionStatuses != null) {
                             String status = inspectionStatuses.get(device.getDeviceId());
                             if (status != null) {
@@ -918,16 +983,15 @@ public class DeviceService {
         // 첫 번째 컬럼(No)은 좁게 설정
         sheet.setColumnWidth(0, 1500);
         
-        // 비고 컬럼(13번째)에 자동 줄바꿈 설정
+        // 비고 컬럼(14번째, 0-based)에 자동 줄바꿈 설정
         CellStyle wrappingStyle = workbook.createCellStyle();
         wrappingStyle.cloneStyleFrom(dataStyle);
         wrappingStyle.setWrapText(true);
         
-        // 비고 컬럼에 줄바꿈 스타일 적용
         for (int i = 3; i < rowNum; i++) {
             Row row = sheet.getRow(i);
             if (row != null) {
-                Cell noteCell = row.getCell(13);
+                Cell noteCell = row.getCell(14);
                 if (noteCell != null) {
                     // 기존 텍스트 가져오기
                     String noteText = noteCell.getStringCellValue();
@@ -1347,6 +1411,7 @@ public class DeviceService {
                 });
         
         List<Device> devices = new ArrayList<>();
+        Map<String, Integer> ipToRow = new HashMap<>(); // 엑셀 내 IP 중복 검사용 (IP -> 첫 등장 행 번호)
         try (InputStream is = file.getInputStream()) {
             Workbook workbook = WorkbookFactory.create(is);
             Sheet sheet = workbook.getSheetAt(0);
@@ -1361,12 +1426,12 @@ public class DeviceService {
                 rowCount++;
                 
                 try {
-                    // 빈 행 체크 - 타입(3번째 컬럼)이 비어있으면 스킵
+                    // 빈 행 체크 - 타입(4번째 컬럼, 인덱스 3)이 비어있으면 스킵
                     if (isEmptyRow(row)) {
                         continue;
                     }
                     
-                    // UID 정보 처리 (첫 번째 컬럼)
+                    // UID 정보 처리 (첫 번째 컬럼, 인덱스 0)
                     String uidInfo = null;
                     try {
                         uidInfo = getCellString(row.getCell(0));
@@ -1376,10 +1441,20 @@ public class DeviceService {
                     
                     String uidCate = null;
                     
-                    // 관리번호는 두 번째 컬럼(1)
+                    // COMSNo (두 번째 컬럼, 인덱스 1)
+                    String comsNo = null;
+                    try {
+                        comsNo = getCellString(row.getCell(1));
+                        if (comsNo != null) comsNo = comsNo.trim();
+                        if (comsNo != null && comsNo.isEmpty()) comsNo = null;
+                    } catch (Exception e) {
+                        // COMSNo는 선택사항
+                    }
+                    
+                    // 관리번호 (세 번째 컬럼, 인덱스 2)
                     String manageNo = null;
                     try {
-                        manageNo = getCellString(row.getCell(1));
+                        manageNo = getCellString(row.getCell(2));
                     } catch (Exception e) {
                         // 관리번호는 선택사항이므로 오류 무시
                     }
@@ -1389,32 +1464,28 @@ public class DeviceService {
                     if (manageNo != null && !manageNo.trim().isEmpty()) {
                         try {
                             ManageNumber mn = parseManageNo(manageNo);
-                            
-                            // ManageService.findOrCreate()을 사용하여 학교별로 정확한 관리번호 생성
                             manage = manageService.findOrCreate(school, mn.manageCate, mn.year, mn.manageNum);
                         } catch (Exception e) {
                             log.warn("{}번째 행 관리번호 형식 오류: {}, {}", rowCount, manageNo, e.getMessage());
-                            // 특정 행의 관리번호 오류를 알림
                             throw new IllegalArgumentException(rowCount + "번째 행의 관리번호 형식이 잘못되었습니다: " + manageNo);
                         }
                     }
                     
-                    // 타입 정보 (세 번째 컬럼)
+                    // 타입 정보 (네 번째 컬럼, 인덱스 3)
                     String type = null;
                     try {
-                        type = getCellString(row.getCell(2));
+                        type = getCellString(row.getCell(3));
                     } catch (Exception e) {
                         // 타입 정보 처리 중 오류
                     }
                     
-                    // 유효한 타입이 없으면 구체적인 오류 메시지와 함께 예외 발생
                     if (type == null || type.trim().isEmpty()) {
                         throw new IllegalArgumentException(rowCount + "번째 행에 장비 타입이 없습니다. 장비 타입은 필수 값입니다.");
                     }
                     
-                    // 취급자 정보 (4번째와 5번째 컬럼)
-                    final String operatorPosition = getCellString(row.getCell(3)); // 직위
-                    final String operatorName = getCellString(row.getCell(4)); // 취급자
+                    // 취급자 정보 (5·6번째 컬럼)
+                    final String operatorPosition = getCellString(row.getCell(4)); // 직위
+                    final String operatorName = getCellString(row.getCell(5)); // 취급자
                     Operator operator = null;
                     
                     try {
@@ -1440,29 +1511,45 @@ public class DeviceService {
                     String ipAddress = null;
                     
                     try {
-                        manufacturer = getCellString(row.getCell(5));
-                        modelName = getCellString(row.getCell(6));
-                        
-                        Cell dateCell = row.getCell(7); // 도입일자 컬럼
-                        
+                        manufacturer = getCellString(row.getCell(6));
+                        modelName = getCellString(row.getCell(7));
+                        Cell dateCell = row.getCell(8); // 도입일자 컬럼
                         if (dateCell != null && dateCell.getCellType() != CellType.BLANK) {
                             purchaseDate = parseLocalDate(dateCell);
                         }
-                        
-                        ipAddress = getCellString(row.getCell(8));
+                        ipAddress = getCellString(row.getCell(9));
                     } catch (Exception e) {
                         // 선택적 정보이므로 진행
                     }
+                    if (ipAddress != null) {
+                        ipAddress = DisabledIpService.normalizeIp(ipAddress.trim());
+                    }
                     if (ipAddress != null && !ipAddress.isBlank()) {
+                        if (disabledIpService.isDisabled(school.getSchoolId(), ipAddress)) {
+                            throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 사용불가 IP입니다.");
+                        }
+                        if (ipToRow.containsKey(ipAddress)) {
+                            throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 엑셀 내에서 " + ipToRow.get(ipAddress) + "번째 행과 중복된 IP입니다.");
+                        }
+                        List<Device> existingWithIp = deviceRepository.findByIpAddress(ipAddress);
+                        if (!existingWithIp.isEmpty()) {
+                            Device other = existingWithIp.get(0);
+                            String loc = other.getClassroom() != null && other.getClassroom().getRoomName() != null
+                                ? other.getClassroom().getRoomName() : "위치 미지정";
+                            String sch = other.getSchool() != null && other.getSchool().getSchoolName() != null
+                                ? other.getSchool().getSchoolName() : "학교 미지정";
+                            throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 이미 다른 장비에 사용 중입니다. (학교: " + sch + ", 위치: " + loc + ")");
+                        }
+                        ipToRow.put(ipAddress, rowCount);
                         updateSchoolIpFromDeviceIfNull(school, ipAddress);
                     }
                     
-                    // 교실 처리 (필수 항목)
+                    // 교실 처리 (필수 항목, 10번째 컬럼 인덱스 9)
                     String classroomName = null;
                     Classroom classroom = null;
                     
                     try {
-                        classroomName = getCellString(row.getCell(9));
+                        classroomName = getCellString(row.getCell(10));
                         
                         if (classroomName == null || classroomName.isBlank()) {
                             throw new IllegalArgumentException(rowCount + "번째 행에 설치장소(교실)가 지정되지 않았습니다. 설치장소는 필수 항목입니다.");
@@ -1487,9 +1574,9 @@ public class DeviceService {
                     }
                     
                     // 기타 옵션 필드
-                    String purpose = getCellString(row.getCell(10));
-                    String setType = getCellString(row.getCell(11));
-                    String note = getCellString(row.getCell(12));
+                    String purpose = getCellString(row.getCell(11));
+                    String setType = getCellString(row.getCell(12));
+                    String note = getCellString(row.getCell(13));
                     
                     // UID 카테고리 결정 로직
                     if (uidInfo == null || uidInfo.trim().isEmpty()) {
@@ -1568,6 +1655,7 @@ public class DeviceService {
                     
                     // Device 객체 생성 및 기본 정보 설정
                     Device device = new Device();
+                    device.setComsNo(comsNo);
                     device.setType(type);
                     device.setManufacturer(manufacturer);
                     device.setModelName(modelName);
@@ -1958,8 +2046,8 @@ public class DeviceService {
 
     // 빈 행 여부 체크
     private boolean isEmptyRow(Row row) {
-        // 최소한 타입(3번째 컬럼)은 있어야 함
-        Cell typeCell = row.getCell(2);
+        // 최소한 타입(4번째 컬럼, 인덱스 3)은 있어야 함
+        Cell typeCell = row.getCell(3);
         if (typeCell == null) return true;
         
         String typeValue = getCellString(typeCell);
@@ -1967,8 +2055,8 @@ public class DeviceService {
         
         // 최소한 하나의 다른 컬럼에 데이터가 있어야 함
         boolean hasOtherData = false;
-        for (int i = 0; i <= 12; i++) {
-            if (i == 2) continue; // 타입 컬럼은 이미 체크함
+        for (int i = 0; i <= 13; i++) {
+            if (i == 3) continue; // 타입 컬럼은 이미 체크함
             
             Cell cell = row.getCell(i);
             if (cell != null) {

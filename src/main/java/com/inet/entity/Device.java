@@ -74,6 +74,9 @@ public class Device {
     @JoinColumn(name = "uid_id")
     private Uid uid;
 
+    @Column(name = "coms_no", length = 255)
+    private String comsNo;
+
     // Explicit getter methods
     public String getIpAddress() {
         return this.ipAddress;

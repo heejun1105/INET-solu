@@ -176,18 +176,19 @@
             line-height: 1.4;
         }
 
-        /* 버튼 스타일 */
-        .form-actions {
+        /* 버튼 영역 (장비·무선AP 동일 형식) */
+        .form-buttons {
             display: flex;
             gap: 1rem;
             justify-content: center;
-            margin-top: 2rem;
+            margin-top: 3rem;
             flex-wrap: wrap;
         }
 
         .btn-modern {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
             padding: 1rem 2rem;
             border-radius: 12px;
@@ -197,29 +198,31 @@
             cursor: pointer;
             transition: all 0.3s ease;
             font-size: 1rem;
-            min-height: 52px;
+            min-width: 140px;
         }
 
-        .btn-primary-modern {
+        /* 무선 AP 등록/수정 메인 버튼 (초록색) */
+        .btn-ap-action {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
         }
-
-        .btn-primary-modern:hover {
+        .btn-ap-action:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
-        }
-
-                .btn-secondary-modern {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
             color: white;
-            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
         }
-        
-        .btn-secondary-modern:hover {
+        /* 목록 버튼 (모든 페이지 동일 회색) */
+        .btn-list {
+            background: #6b7280;
+            color: white;
+            border: 2px solid #6b7280;
+        }
+        .btn-list:hover {
+            background: #4b5563;
+            border-color: #4b5563;
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+            color: white;
         }
 
         /* 애니메이션 */
@@ -269,13 +272,14 @@
                 gap: 1rem;
             }
             
-            .form-actions {
+            .form-buttons {
                 flex-direction: column;
+                align-items: center;
             }
             
             .btn-modern {
                 width: 100%;
-                justify-content: center;
+                max-width: 300px;
             }
         }
     </style>
@@ -446,15 +450,15 @@
                     </div>
                 </div>
 
-                <!-- 폼 액션 -->
-                <div class="form-actions">
-                    <button type="submit" class="btn-modern btn-primary-modern">
+                <!-- 버튼 영역 (장비 수정과 동일 형식) -->
+                <div class="form-buttons">
+                    <button type="submit" class="btn-modern btn-ap-action">
                         <i class="fas fa-save"></i>
-                        수정 완료
+                        수정
                     </button>
-                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/wireless-ap/list}" class="btn-modern btn-secondary-modern">
+                    <a th:href="${returnUrl != null and !#strings.isEmpty(returnUrl)} ? ${returnUrl} : @{/wireless-ap/list}" class="btn-modern btn-list">
                         <i class="fas fa-list"></i>
-                        목록으로
+                        목록
                     </a>
                 </div>
             </form>

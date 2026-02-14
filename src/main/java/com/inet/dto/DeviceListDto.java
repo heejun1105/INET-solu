@@ -18,6 +18,8 @@ public class DeviceListDto {
     private Long deviceId;
     private String schoolName;
     private String uidDisplay;
+    /** CNo (COMSNo) - 고유번호와 관리번호 사이 컬럼 */
+    private String cNo;
     private String manageDisplay;
     private String type;
     private String operatorPosition;

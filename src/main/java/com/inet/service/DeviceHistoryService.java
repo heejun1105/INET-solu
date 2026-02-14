@@ -237,6 +237,7 @@ public class DeviceHistoryService {
             case "operator": return "담당자";
             case "manage": return "관리번호";
             case "uid": return "고유번호";
+            case "comsNo": return "CNo";
             default: return fieldName;
         }
     }

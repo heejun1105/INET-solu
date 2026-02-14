@@ -11,12 +11,16 @@ import com.inet.service.SchoolService;
 import com.inet.service.PermissionService;
 import com.inet.service.SchoolPermissionService;
 import com.inet.service.UserService;
+import com.inet.service.DisabledIpService;
 import com.inet.config.PermissionHelper;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
@@ -55,6 +59,7 @@ public class IpController {
     private final UserService userService;
     private final PermissionHelper permissionHelper;
     private final com.inet.service.DeviceHistoryService deviceHistoryService;
+    private final DisabledIpService disabledIpService;
     
     // 권한 체크 메서드
     private User checkPermission(Feature feature, RedirectAttributes redirectAttributes) {
@@ -176,6 +181,9 @@ public class IpController {
             model.addAttribute("secondOctets", secondOctets);
             model.addAttribute("selectedSecondOctet", secondOctet);
 
+            String ipThirdOctetStr = selectedSchool.getIp() != null ? String.valueOf(selectedSchool.getIp()) : "x";
+            Map<String, String> disabledReasons = disabledIpService.getDisabledReasonsBySchool(schoolId);
+
             // secondOctet이 null이거나 비어있으면 "all"로 처리
             if (secondOctet == null || secondOctet.isEmpty() || "all".equals(secondOctet)) {
                 // IP 대역별로 장비 그룹화
@@ -198,6 +206,10 @@ public class IpController {
                             map.put("number", i);
                             Device device = deviceMap.getOrDefault(i, null);
                             map.put("device", device);
+                            String fullIp = "10." + octet + "." + ipThirdOctetStr + "." + i;
+                            map.put("fullIp", fullIp);
+                            map.put("disabled", disabledReasons.containsKey(fullIp));
+                            map.put("disabledReason", disabledReasons.getOrDefault(fullIp, ""));
                             return map;
                         })
                         .collect(Collectors.toList());
@@ -226,6 +238,10 @@ public class IpController {
                         map.put("number", i);
                         Device device = deviceMap.getOrDefault(i, null);
                         map.put("device", device);
+                        String fullIp = "10." + secondOctet + "." + ipThirdOctetStr + "." + i;
+                        map.put("fullIp", fullIp);
+                        map.put("disabled", disabledReasons.containsKey(fullIp));
+                        map.put("disabledReason", disabledReasons.getOrDefault(fullIp, ""));
                         return map;
                     })
                     .collect(Collectors.toList());
@@ -242,6 +258,57 @@ public class IpController {
         }
 
         return "ip/iplist";
+    }
+
+    /** 장비 등록/수정 시 IP 사용불가·중복 여부 조회 (schoolId, ipAddress 필수, deviceId는 수정 시 자기 제외용) */
+    @GetMapping("/api/check-ip")
+    public ResponseEntity<Map<String, Boolean>> checkIp(
+            @RequestParam Long schoolId,
+            @RequestParam String ipAddress,
+            @RequestParam(required = false) Long deviceId) {
+        Map<String, Boolean> result = deviceService.checkIpStatus(schoolId, ipAddress != null ? ipAddress.trim() : "", deviceId);
+        return ResponseEntity.ok(result);
+    }
+
+    /** IP 사용불가 지정 (배정되지 않은 IP만 가능, 학교별) */
+    @PostMapping("/api/disabled")
+    public ResponseEntity<Map<String, Object>> setDisabled(
+            @RequestParam Long schoolId,
+            @RequestParam String ipAddress,
+            @RequestParam(required = false, defaultValue = "") String reason,
+            RedirectAttributes redirectAttributes) {
+        User user = checkSchoolPermission(Feature.DEVICE_LIST, schoolId, redirectAttributes);
+        if (user == null) {
+            return ResponseEntity.status(403).body(Map.of("success", false, "message", "권한이 없습니다."));
+        }
+        try {
+            disabledIpService.setDisabled(schoolId, ipAddress.trim(), reason);
+            return ResponseEntity.ok(Map.of("success", true, "message", "사용불가로 지정되었습니다."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("IP 사용불가 지정 오류: schoolId={}, ip={}", schoolId, ipAddress, e);
+            return ResponseEntity.status(500).body(Map.of("success", false, "message", "처리 중 오류가 발생했습니다."));
+        }
+    }
+
+    /** IP 사용불가 해제 */
+    @DeleteMapping("/api/disabled")
+    public ResponseEntity<Map<String, Object>> removeDisabled(
+            @RequestParam Long schoolId,
+            @RequestParam String ipAddress,
+            RedirectAttributes redirectAttributes) {
+        User user = checkSchoolPermission(Feature.DEVICE_LIST, schoolId, redirectAttributes);
+        if (user == null) {
+            return ResponseEntity.status(403).body(Map.of("success", false, "message", "권한이 없습니다."));
+        }
+        try {
+            disabledIpService.removeDisabled(schoolId, ipAddress.trim());
+            return ResponseEntity.ok(Map.of("success", true, "message", "사용불가가 해제되었습니다."));
+        } catch (Exception e) {
+            logger.error("IP 사용불가 해제 오류: schoolId={}, ip={}", schoolId, ipAddress, e);
+            return ResponseEntity.status(500).body(Map.of("success", false, "message", "처리 중 오류가 발생했습니다."));
+        }
     }
 
     /** 장비 수정 등에서 모달로 IP 대장을 보여주기 위한 HTML 프래그먼트 (schoolId 필수) */
