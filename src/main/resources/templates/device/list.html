@@ -3012,8 +3012,20 @@
             }
         }
         
-        // QR 다운로드 모달 열기
+        // QR 다운로드 모달 열기 (현재 필터 선택값을 모달에 동기화)
         function openQrDownloadModal() {
+            const schoolSelect = document.getElementById('schoolSelect');
+            const classroomSelect = document.getElementById('classroomSelect');
+            const typeSelect = document.querySelector('select[name="type"]');
+            const searchInput = document.getElementById('searchInput');
+            const qrModalSchoolId = document.getElementById('qrModalSchoolId');
+            const qrModalClassroomId = document.getElementById('qrModalClassroomId');
+            const qrModalType = document.getElementById('qrModalType');
+            const qrModalSearchKeyword = document.getElementById('qrModalSearchKeyword');
+            if (schoolSelect && qrModalSchoolId) qrModalSchoolId.value = schoolSelect.value || '';
+            if (classroomSelect && qrModalClassroomId) qrModalClassroomId.value = classroomSelect.value || '';
+            if (typeSelect && qrModalType) qrModalType.value = typeSelect.value || '';
+            if (searchInput && qrModalSearchKeyword) qrModalSearchKeyword.value = searchInput.value || '';
             const modal = document.getElementById('qrDownloadModal');
             if (modal) {
                 modal.style.display = 'block';
@@ -3415,6 +3427,13 @@
         var qrScanClose = document.getElementById('qrScanClose');
         var stream = null;
         var animationId = null;
+        var barcodeDetector = null;
+        var barcodeDetectorFrameCount = 0;
+        try {
+            if ('BarcodeDetector' in window) {
+                barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+            }
+        } catch (e) {}
         
         function stopQrScan() {
             if (animationId) {
@@ -3444,7 +3463,7 @@
         }
         
         function tick() {
-            if (!qrScanVideo || qrScanVideo.readyState !== qrScanVideo.HAVE_ENOUGH_DATA || !qrScanCanvas || typeof jsQR === 'undefined') {
+            if (!qrScanVideo || qrScanVideo.readyState !== qrScanVideo.HAVE_ENOUGH_DATA || !qrScanCanvas) {
                 animationId = requestAnimationFrame(tick);
                 return;
             }
@@ -3458,11 +3477,19 @@
             qrScanCanvas.height = h;
             var ctx = qrScanCanvas.getContext('2d');
             ctx.drawImage(qrScanVideo, 0, 0, w, h);
-            var imageData = ctx.getImageData(0, 0, w, h);
-            var result = jsQR(imageData.data, w, h, { inversionAttempts: 'dontInvert' });
-            if (result && result.data) {
-                applySearchAndClose(result.data);
-                return;
+            var found = false;
+            if (barcodeDetector && (barcodeDetectorFrameCount++ % 6 === 0)) {
+                barcodeDetector.detect(qrScanVideo).then(function(rs) {
+                    if (rs && rs.length && rs[0].rawValue) applySearchAndClose(rs[0].rawValue);
+                }).catch(function() {});
+            }
+            if (typeof jsQR !== 'undefined') {
+                var imageData = ctx.getImageData(0, 0, w, h);
+                var result = jsQR(imageData.data, w, h, { inversionAttempts: 'attemptBoth' });
+                if (result && result.data) {
+                    applySearchAndClose(result.data);
+                    return;
+                }
             }
             animationId = requestAnimationFrame(tick);
         }
@@ -3475,7 +3502,14 @@
                 }
                 if (!qrScanModal || !qrScanVideo || !qrScanCanvas) return;
                 qrScanModal.classList.add('show');
-                var constraints = { video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } };
+                barcodeDetectorFrameCount = 0;
+                var constraints = {
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920, min: 1280 },
+                        height: { ideal: 1080, min: 720 }
+                    }
+                };
                 navigator.mediaDevices.getUserMedia(constraints).then(function(s) {
                     stream = s;
                     qrScanVideo.srcObject = s;
@@ -3485,6 +3519,16 @@
                     }).catch(function() {
                         tick();
                     });
+                }).catch(function(err) {
+                    constraints.video = { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } };
+                    return navigator.mediaDevices.getUserMedia(constraints);
+                }).then(function(s) {
+                    if (!stream) {
+                        stream = s;
+                        qrScanVideo.srcObject = s;
+                        qrScanVideo.setAttribute('playsinline', true);
+                        qrScanVideo.play().then(function() { tick(); }).catch(function() { tick(); });
+                    }
                 }).catch(function(err) {
                     stopQrScan();
                     alert('카메라에 접근할 수 없습니다. 권한을 허용해 주세요.');
