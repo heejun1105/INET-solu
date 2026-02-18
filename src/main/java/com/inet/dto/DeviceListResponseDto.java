@@ -32,4 +32,6 @@ public class DeviceListResponseDto {
     /** deviceId -> inspection status (confirmed / modified / unchecked) */
     private Map<Long, String> inspectionStatuses;
     private String searchKeyword;
+    /** 장비 수정/삭제 권한 여부 (false면 수정·삭제 버튼 숨김) */
+    private boolean hasDeviceManagementPermission;
 }

@@ -665,6 +665,7 @@ public class DeviceController {
         try {
             listUrlEncoded = java.net.URLEncoder.encode(listUrl, java.nio.charset.StandardCharsets.UTF_8);
         } catch (Exception e) { }
+        boolean hasMgmt = permissionService.hasPermission(user, Feature.DEVICE_MANAGEMENT);
         DeviceListResponseDto body = DeviceListResponseDto.builder()
                 .devices(dtos)
                 .currentPage(page)
@@ -677,6 +678,7 @@ public class DeviceController {
                 .inspectionMode(isInspectionMode)
                 .inspectionStatuses(inspectionStatuses)
                 .searchKeyword(searchKeyword != null ? searchKeyword : "")
+                .hasDeviceManagementPermission(hasMgmt)
                 .build();
         return ResponseEntity.ok(body);
     }
@@ -863,11 +865,12 @@ public class DeviceController {
         // 장비 조회
         Device device = deviceService.getDeviceById(id)
                 .orElseThrow(() -> new RuntimeException("Device not found with id: " + id));
-        
-        // 권한 체크 (학교별 권한 체크)
-        User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, device.getSchool().getSchoolId(), redirectAttributes);
+        Long schoolId = (device.getSchool() != null) ? device.getSchool().getSchoolId() : null;
+        String listRedirect = (schoolId != null) ? "redirect:/device/list?schoolId=" + schoolId : "redirect:/device/list";
+        // 권한 체크 (학교별 권한 체크) - 실패 시 장비목록으로 돌아가며 권한 없음 알림 표시
+        User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, schoolId, redirectAttributes);
         if (user == null) {
-            return "redirect:/";
+            return listRedirect;
         }
         
         // 권한 정보 추가
@@ -908,10 +911,12 @@ public class DeviceController {
             redirectAttributes.addFlashAttribute("errorMessage", "학교 정보가 없습니다. 다시 시도해 주세요.");
             return "redirect:/device/modify/" + device.getDeviceId();
         }
-        // 권한 체크 (학교별 권한 체크)
-        User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, device.getSchool().getSchoolId(), redirectAttributes);
+        Long schoolId = device.getSchool().getSchoolId();
+        String listRedirect = "redirect:/device/list?schoolId=" + schoolId;
+        // 권한 체크 (학교별 권한 체크) - 실패 시 장비목록으로 돌아가며 권한 없음 알림 표시
+        User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, schoolId, redirectAttributes);
         if (user == null) {
-            return "redirect:/";
+            return listRedirect;
         }
         log.info("Modifying device: {}", device);
 
@@ -1055,15 +1060,16 @@ public class DeviceController {
         // 장비 조회
         Device device = deviceService.getDeviceById(deviceId)
                 .orElseThrow(() -> new RuntimeException("Device not found with id: " + deviceId));
-        
-        // 권한 체크 (학교별 권한 체크)
-        User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, device.getSchool().getSchoolId(), redirectAttributes);
+        Long schoolId = (device.getSchool() != null) ? device.getSchool().getSchoolId() : null;
+        String listRedirect = (schoolId != null) ? "redirect:/device/list?schoolId=" + schoolId : "redirect:/device/list";
+        // 권한 체크 (학교별 권한 체크) - 실패 시 장비목록으로 돌아가며 권한 없음 알림 표시
+        User user = checkSchoolPermission(Feature.DEVICE_MANAGEMENT, schoolId, redirectAttributes);
         if (user == null) {
-            return "redirect:/";
+            return listRedirect;
         }
         log.info("Removing device: {}", deviceId);
         deviceService.deleteDevice(deviceId);
-        return "redirect:/device/list";
+        return listRedirect;
     }
     
     /**

@@ -158,10 +158,10 @@ public class SchoolController {
 
     @PostMapping("/delete/{id}")
     public String deleteSchool(@PathVariable Long id, RedirectAttributes redirectAttributes) {
-        // 권한 체크
+        // 권한 체크 - 실패 시 학교관리 페이지로 돌아가며 권한 없음 알림 표시
         User user = checkPermission(Feature.SCHOOL_MANAGEMENT, redirectAttributes);
         if (user == null) {
-            return "redirect:/";
+            return "redirect:/school/manage";
         }
         try {
             schoolService.deleteSchool(id);

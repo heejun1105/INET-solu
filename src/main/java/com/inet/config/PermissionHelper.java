@@ -59,9 +59,9 @@ public class PermissionHelper {
             case DEVICE_LIST:
                 return "장비 목록 조회 권한이 없습니다. 관리자에게 문의하세요.";
             case DEVICE_MANAGEMENT:
-                return "장비 관리 권한이 없습니다. 관리자에게 문의하세요.";
+                return "장비 삭제·수정 권한이 없습니다. 관리자에게 문의하세요.";
             case SCHOOL_MANAGEMENT:
-                return "학교 관리 권한이 없습니다. 관리자에게 문의하세요.";
+                return "학교 삭제 권한이 없습니다. 관리자에게 문의하세요.";
             case CLASSROOM_MANAGEMENT:
                 return "교실 관리 권한이 없습니다. 관리자에게 문의하세요.";
             case FLOORPLAN_MANAGEMENT:

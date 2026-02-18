@@ -1093,6 +1093,13 @@
                 <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'"></button>
             </div>
             
+            <!-- 권한 없음 등 오류 메시지 표시 -->
+            <div th:if="${error}" class="alert alert-danger alert-dismissible fade show" role="alert" style="background-color: #f8d7da; color: #721c24; border-color: #f5c6cb;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span th:text="${error}"></span>
+                <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'"></button>
+            </div>
+            
             <div class="title">
                 <div class="subject" id="pageTitle" th:text="${inspectionMode ? '장비검사' : '장비 목록'}">장비 목록</div>
                 <div class="subtitle" id="pageSubtitle" th:text="${inspectionMode ? '장비 상태를 확인하고 검사하세요!' : '학교별, 유형별로 장비를 관리하세요!'}">학교별, 유형별로 장비를 관리하세요!</div>
@@ -1386,7 +1393,7 @@
                                 <td data-label="비고" th:text="${device.note != null ? device.note : ''}"></td>
                                 <td data-label="불용" th:text="${device.unused != null && device.unused ? 'Y' : 'N'}"></td>
                                 <td data-label="관리">
-                                    <div class="action-buttons">
+                                    <div class="action-buttons" th:if="${hasDeviceManagementPermission}">
                                         <a th:href="@{/device/modify/{id}(id=${device.deviceId}, returnUrl=${listUrlEncoded})}" class="btn btn-warning">
                                             <i class="fas fa-edit"></i>
                                         </a>
@@ -1397,6 +1404,7 @@
                                             </button>
                                         </form>
                                     </div>
+                                    <span th:if="${!hasDeviceManagementPermission}" class="text-muted" style="font-size: 0.85rem;">-</span>
                                 </td>
                                 <td data-label="검사확인" id="inspectionCell" th:style="${inspectionMode ? '' : 'display: none;'}">
                                     <div class="inspection-checkbox" th:data-device-id="${device.deviceId}" onclick="toggleInspection(this)">
@@ -1561,15 +1569,17 @@
                             </div>
                             
                             <div class="card-actions">
-                                <a th:href="@{/device/modify/{id}(id=${device.deviceId}, returnUrl=${listUrlEncoded})}" class="btn btn-warning">
-                                    <i class="fas fa-edit"></i> 수정
-                                </a>
-                                <form th:action="@{/device/remove}" method="post" style="display: inline;">
-                                    <input type="hidden" name="device_id" th:value="${device.deviceId}">
-                                    <button type="submit" class="btn btn-danger" onclick="return confirm('정말 삭제하시겠습니까?')">
-                                        <i class="fas fa-trash-alt"></i> 삭제
-                                    </button>
-                                </form>
+                                <th:block th:if="${hasDeviceManagementPermission}">
+                                    <a th:href="@{/device/modify/{id}(id=${device.deviceId}, returnUrl=${listUrlEncoded})}" class="btn btn-warning">
+                                        <i class="fas fa-edit"></i> 수정
+                                    </a>
+                                    <form th:action="@{/device/remove}" method="post" style="display: inline;">
+                                        <input type="hidden" name="device_id" th:value="${device.deviceId}">
+                                        <button type="submit" class="btn btn-danger" onclick="return confirm('정말 삭제하시겠습니까?')">
+                                            <i class="fas fa-trash-alt"></i> 삭제
+                                        </button>
+                                    </form>
+                                </th:block>
                                 <!-- 검사확인 체크박스 (검사모드일 때만 표시) -->
                                 <div th:if="${inspectionMode}" 
                                      th:classappend="${inspectionStatuses != null and inspectionStatuses.containsKey(device.deviceId) ? 
@@ -1966,7 +1976,8 @@
                 html += '<td data-label="세트분류">' + escapeHtml(d.setType || '') + '</td>';
                 html += '<td data-label="비고">' + escapeHtml(d.note || '') + '</td>';
                 html += '<td data-label="불용">' + (d.unused ? 'Y' : 'N') + '</td>';
-                html += '<td data-label="관리"><div class="action-buttons"><a href="' + modifyUrl + '" class="btn btn-warning"><i class="fas fa-edit"></i></a><form action="/device/remove" method="post" style="display: inline;"><input type="hidden" name="device_id" value="' + d.deviceId + '"><button type="submit" class="btn btn-danger" onclick="return confirm(\'정말 삭제하시겠습니까?\')"><i class="fas fa-trash-alt"></i></button></form></div></td>';
+                var mgmtHtml = (data.hasDeviceManagementPermission ? '<div class="action-buttons"><a href="' + modifyUrl + '" class="btn btn-warning"><i class="fas fa-edit"></i></a><form action="/device/remove" method="post" style="display: inline;"><input type="hidden" name="device_id" value="' + d.deviceId + '"><button type="submit" class="btn btn-danger" onclick="return confirm(\'정말 삭제하시겠습니까?\')"><i class="fas fa-trash-alt"></i></button></form></div>' : '<span class="text-muted" style="font-size: 0.85rem;">-</span>');
+                html += '<td data-label="관리">' + mgmtHtml + '</td>';
                 html += '<td data-label="검사확인" id="inspectionCell" style="' + (inspectionMode ? '' : 'display: none;') + '"><div class="inspection-checkbox" data-device-id="' + d.deviceId + '" onclick="toggleInspection(this)"><i class="fas fa-check-circle inspection-icon ' + inspStatus + '"' + inspIcon + '></i></div></td>';
                 html += '</tr>';
             }
@@ -2016,7 +2027,8 @@
                 html += '<div class="card-field"><div class="field-label">세트분류</div><div class="field-value">' + (d.setType ? escapeHtml(d.setType) : '<span style="color: #9ca3af;">-</span>') + '</div></div>';
                 html += '<div class="card-field"><div class="field-label">불용</div><div class="field-value">' + (d.unused ? '<span style="color: #dc2626; font-weight: 600;">Y</span>' : '<span style="color: #16a34a; font-weight: 600;">N</span>') + '</div></div>';
                 html += '<div class="card-field full-width"><div class="field-label">비고</div><div class="field-value">' + (d.note ? escapeHtml(d.note) : '<span style="color: #9ca3af;">-</span>') + '</div></div></div>';
-                html += '<div class="card-actions"><a href="' + modifyUrl + '" class="btn btn-warning"><i class="fas fa-edit"></i> 수정</a><form action="/device/remove" method="post" style="display: inline;"><input type="hidden" name="device_id" value="' + d.deviceId + '"><button type="submit" class="btn btn-danger" onclick="return confirm(\'정말 삭제하시겠습니까?\')"><i class="fas fa-trash-alt"></i> 삭제</button></form>';
+                var cardActionsHtml = (data.hasDeviceManagementPermission ? '<a href="' + modifyUrl + '" class="btn btn-warning"><i class="fas fa-edit"></i> 수정</a><form action="/device/remove" method="post" style="display: inline;"><input type="hidden" name="device_id" value="' + d.deviceId + '"><button type="submit" class="btn btn-danger" onclick="return confirm(\'정말 삭제하시겠습니까?\')"><i class="fas fa-trash-alt"></i> 삭제</button></form>' : '');
+                html += '<div class="card-actions">' + cardActionsHtml;
                 if (inspectionMode) {
                     html += '<div class="inspection-checkbox-mobile state-' + inspStatus + '" data-device-id="' + d.deviceId + '" onclick="toggleInspection(this)"><i class="fas fa-check-circle inspection-icon ' + inspStatus + '" style="' + (inspStatus === 'confirmed' ? 'color: #28a745' : inspStatus === 'modified' ? 'color: #ffc107' : 'color: #ccc') + ';"></i><span class="inspection-label">검사확인</span></div>';
                 }
