@@ -32,6 +32,27 @@ public class DisabledIpService {
     }
 
     /**
+     * 옥텟과 숫자가 조합된 유효한 IP 형식인지 여부 (10.x.x.x, 각 옥텟 0-255).
+     * USB, 미지정 등 텍스트는 false. 중복/사용불가 검사는 이 값이 true일 때만 수행.
+     */
+    public static boolean isValidIpFormat(String ipAddress) {
+        if (ipAddress == null || ipAddress.isBlank()) return false;
+        String s = ipAddress.trim();
+        String[] parts = s.split("\\.");
+        if (parts.length != 4) return false;
+        if (s.matches(".*[ㄱ-ㅎㅏ-ㅣ가-힣].*") || s.toLowerCase().contains("usb")) return false;
+        try {
+            for (String p : parts) {
+                int n = Integer.parseInt(p.trim());
+                if (n < 0 || n > 255) return false;
+            }
+            return s.matches("^10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
      * IP 문자열을 정규화 (예: 10.101.36.008 → 10.101.36.8). 비교 시 사용.
      */
     public static String normalizeIp(String ipAddress) {

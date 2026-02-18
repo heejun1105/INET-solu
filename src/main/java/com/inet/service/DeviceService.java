@@ -99,16 +99,19 @@ public class DeviceService {
     public Map<String, Boolean> checkIpStatus(Long schoolId, String ipAddress, Long excludeDeviceId) {
         boolean disabled = false;
         boolean duplicate = false;
+        // 옥텟+숫자 조합의 유효한 IP 형식일 때만 사용불가·중복 검사 (USB 등은 중복 허용)
         if (schoolId != null && ipAddress != null && !ipAddress.isBlank()) {
             String ip = DisabledIpService.normalizeIp(ipAddress.trim());
-            disabled = disabledIpService.isDisabled(schoolId, ip);
-            if (excludeDeviceId != null) {
-                List<Device> others = deviceRepository.findByIpAddressExcludingDevice(ip, excludeDeviceId);
-                duplicate = others.stream()
-                    .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
-            } else {
-                duplicate = deviceRepository.findByIpAddress(ip).stream()
-                    .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+            if (DisabledIpService.isValidIpFormat(ip)) {
+                disabled = disabledIpService.isDisabled(schoolId, ip);
+                if (excludeDeviceId != null) {
+                    List<Device> others = deviceRepository.findByIpAddressExcludingDevice(ip, excludeDeviceId);
+                    duplicate = others.stream()
+                        .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+                } else {
+                    duplicate = deviceRepository.findByIpAddress(ip).stream()
+                        .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+                }
             }
         }
         return Map.of("disabled", disabled, "duplicate", duplicate);
@@ -133,16 +136,17 @@ public class DeviceService {
                 device.getManage().getManageNum());
         }
         
-        // IP 주소: 정규화 후 사용불가·중복 검증
+        // IP 주소: 정규화 후 사용불가·중복 검증 (옥텟+숫자 조합의 유효 IP일 때만, USB 등은 중복 허용)
         if (device.getIpAddress() != null && !device.getIpAddress().trim().isEmpty()) {
             String ip = DisabledIpService.normalizeIp(device.getIpAddress());
             device.setIpAddress(ip);
-            if (device.getSchool() != null && disabledIpService.isDisabled(device.getSchool().getSchoolId(), ip)) {
-                throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 사용불가 IP입니다. IP 대장에서 해제 후 다시 시도해 주세요.");
-            }
-            List<Device> existingList = deviceRepository.findByIpAddress(ip);
-            if (!existingList.isEmpty()) {
-                Device existing = existingList.get(0);
+            if (DisabledIpService.isValidIpFormat(ip)) {
+                if (device.getSchool() != null && disabledIpService.isDisabled(device.getSchool().getSchoolId(), ip)) {
+                    throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 사용불가 IP입니다. IP 대장에서 해제 후 다시 시도해 주세요.");
+                }
+                List<Device> existingList = deviceRepository.findByIpAddress(ip);
+                if (!existingList.isEmpty()) {
+                    Device existing = existingList.get(0);
                 String locationInfo = existing.getClassroom() != null && existing.getClassroom().getRoomName() != null 
                     ? existing.getClassroom().getRoomName() 
                     : "위치 미지정";
@@ -197,6 +201,7 @@ public class DeviceService {
                 }
                 
                 throw new RuntimeException("입력하신 IP 주소(" + device.getIpAddress() + ")는 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요. (기존 장비: 위치 " + locationInfo + ", 고유번호 " + uidInfo + ")");
+                }
             }
         }
         
@@ -266,29 +271,29 @@ public class DeviceService {
      */
     @Transactional
     public void updateDeviceWithHistory(Device updatedDevice, User modifiedBy) {
-        // IP 주소 정규화 및 사용불가·중복 검증 (자기 자신 제외)
+        // IP 주소 정규화 및 사용불가·중복 검증 (옥텟+숫자 조합의 유효 IP일 때만, USB 등은 중복 허용)
         if (updatedDevice.getIpAddress() != null && !updatedDevice.getIpAddress().trim().isEmpty()) {
             String ip = DisabledIpService.normalizeIp(updatedDevice.getIpAddress());
             updatedDevice.setIpAddress(ip);
-            if (updatedDevice.getSchool() != null) {
-            Long schoolId = updatedDevice.getSchool().getSchoolId();
-            if (disabledIpService.isDisabled(schoolId, ip)) {
-                throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 사용불가 IP입니다. IP 대장에서 해제 후 다시 시도해 주세요.");
-            }
-            List<Device> others = deviceRepository.findByIpAddressExcludingDevice(ip, updatedDevice.getDeviceId());
-            boolean duplicate = others.stream()
-                .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
-            if (duplicate) {
-                Device existing = others.stream()
-                    .filter(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId))
-                    .findFirst().orElse(null);
-                String locationInfo = existing != null && existing.getClassroom() != null && existing.getClassroom().getRoomName() != null
-                    ? existing.getClassroom().getRoomName() : "위치 미지정";
-                String uidInfo = existing != null && existing.getUid() != null
-                    ? (existing.getUid().getCate() + "-" + existing.getUid().getMfgYear() + "-" + String.format("%04d", existing.getUid().getIdNumber()))
-                    : "미지정";
-                throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요. (기존 장비: 위치 " + locationInfo + ", 고유번호 " + uidInfo + ")");
-            }
+            if (DisabledIpService.isValidIpFormat(ip) && updatedDevice.getSchool() != null) {
+                Long schoolId = updatedDevice.getSchool().getSchoolId();
+                if (disabledIpService.isDisabled(schoolId, ip)) {
+                    throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 사용불가 IP입니다. IP 대장에서 해제 후 다시 시도해 주세요.");
+                }
+                List<Device> others = deviceRepository.findByIpAddressExcludingDevice(ip, updatedDevice.getDeviceId());
+                boolean duplicate = others.stream()
+                    .anyMatch(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId));
+                if (duplicate) {
+                    Device existing = others.stream()
+                        .filter(d -> d.getSchool() != null && d.getSchool().getSchoolId().equals(schoolId))
+                        .findFirst().orElse(null);
+                    String locationInfo = existing != null && existing.getClassroom() != null && existing.getClassroom().getRoomName() != null
+                        ? existing.getClassroom().getRoomName() : "위치 미지정";
+                    String uidInfo = existing != null && existing.getUid() != null
+                        ? (existing.getUid().getCate() + "-" + existing.getUid().getMfgYear() + "-" + String.format("%04d", existing.getUid().getIdNumber()))
+                        : "미지정";
+                    throw new RuntimeException("입력하신 IP 주소(" + ip + ")는 이미 다른 장비에 등록되어 있습니다. IP 주소는 중복될 수 없습니다. 다른 IP를 입력해 주세요. (기존 장비: 위치 " + locationInfo + ", 고유번호 " + uidInfo + ")");
+                }
             }
         }
         
@@ -483,8 +488,9 @@ public class DeviceService {
                 updatedDevice.getManage().getManageNum());
         }
         
-        // IP 주소 중복 검증 (자기 자신 제외)
-        if (updatedDevice.getIpAddress() != null && !updatedDevice.getIpAddress().trim().isEmpty()) {
+        // IP 주소 중복 검증 (옥텟+숫자 조합의 유효 IP일 때만, USB 등은 중복 허용)
+        if (updatedDevice.getIpAddress() != null && !updatedDevice.getIpAddress().trim().isEmpty()
+                && DisabledIpService.isValidIpFormat(DisabledIpService.normalizeIp(updatedDevice.getIpAddress().trim()))) {
             List<Device> existingList = deviceRepository.findByIpAddressExcludingDevice(
                 updatedDevice.getIpAddress().trim(), updatedDevice.getDeviceId());
             if (!existingList.isEmpty()) {
@@ -1525,22 +1531,25 @@ public class DeviceService {
                         ipAddress = DisabledIpService.normalizeIp(ipAddress.trim());
                     }
                     if (ipAddress != null && !ipAddress.isBlank()) {
-                        if (disabledIpService.isDisabled(school.getSchoolId(), ipAddress)) {
-                            throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 사용불가 IP입니다.");
+                        // 옥텟+숫자 조합의 유효한 IP 형식일 때만 사용불가·중복 검사 (USB 등은 중복 허용)
+                        if (DisabledIpService.isValidIpFormat(ipAddress)) {
+                            if (disabledIpService.isDisabled(school.getSchoolId(), ipAddress)) {
+                                throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 사용불가 IP입니다.");
+                            }
+                            if (ipToRow.containsKey(ipAddress)) {
+                                throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 엑셀 내에서 " + ipToRow.get(ipAddress) + "번째 행과 중복된 IP입니다.");
+                            }
+                            List<Device> existingWithIp = deviceRepository.findByIpAddress(ipAddress);
+                            if (!existingWithIp.isEmpty()) {
+                                Device other = existingWithIp.get(0);
+                                String loc = other.getClassroom() != null && other.getClassroom().getRoomName() != null
+                                    ? other.getClassroom().getRoomName() : "위치 미지정";
+                                String sch = other.getSchool() != null && other.getSchool().getSchoolName() != null
+                                    ? other.getSchool().getSchoolName() : "학교 미지정";
+                                throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 이미 다른 장비에 사용 중입니다. (학교: " + sch + ", 위치: " + loc + ")");
+                            }
+                            ipToRow.put(ipAddress, rowCount);
                         }
-                        if (ipToRow.containsKey(ipAddress)) {
-                            throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 엑셀 내에서 " + ipToRow.get(ipAddress) + "번째 행과 중복된 IP입니다.");
-                        }
-                        List<Device> existingWithIp = deviceRepository.findByIpAddress(ipAddress);
-                        if (!existingWithIp.isEmpty()) {
-                            Device other = existingWithIp.get(0);
-                            String loc = other.getClassroom() != null && other.getClassroom().getRoomName() != null
-                                ? other.getClassroom().getRoomName() : "위치 미지정";
-                            String sch = other.getSchool() != null && other.getSchool().getSchoolName() != null
-                                ? other.getSchool().getSchoolName() : "학교 미지정";
-                            throw new IllegalArgumentException(rowCount + "번째 행의 IP(" + ipAddress + ")는 이미 다른 장비에 사용 중입니다. (학교: " + sch + ", 위치: " + loc + ")");
-                        }
-                        ipToRow.put(ipAddress, rowCount);
                         updateSchoolIpFromDeviceIfNull(school, ipAddress);
                     }
                     
