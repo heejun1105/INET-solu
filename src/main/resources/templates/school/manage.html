@@ -323,6 +323,16 @@
             border-color: #60a5fa;
         }
 
+        /* 숫자 입력 화살표 제거 */
+        .school-ip-input::-webkit-outer-spin-button,
+        .school-ip-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .school-ip-input {
+            -moz-appearance: textfield;
+        }
+
 
 
         /* 빈 상태 스타일 */
@@ -456,8 +466,8 @@
                     </div>
                     <div class="form-group-modern">
                         <label for="schoolIp">IP (3번째 옥텟)</label>
-                        <input type="number" id="schoolIp" name="ip" 
-                               placeholder="선택 입력 (0-255)" min="0" max="255" step="1">
+                        <input type="number" id="schoolIp" name="ip" class="school-ip-input"
+                               placeholder="선택 입력" min="0" max="255" step="1">
                     </div>
                     <button type="submit" class="btn-modern btn-primary-modern">
                         <i class="fas fa-plus"></i>
@@ -529,22 +539,35 @@
     <div th:replace="~{fragments/footer :: footer}"></div>
 
     <script th:inline="javascript">
+        function saveSchoolIp(input) {
+            var schoolId = input.getAttribute('data-school-id');
+            if (!schoolId) return;
+            var value = input.value.trim();
+            var ip = value === '' ? null : parseInt(value, 10);
+            if (ip !== null && (isNaN(ip) || ip < 0 || ip > 255)) return;
+
+            var params = new URLSearchParams();
+            if (ip !== null) params.append('ip', ip);
+
+            fetch('/school/' + schoolId + '/ip?' + params.toString(), {
+                method: 'PATCH',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function(r) {
+                if (r.ok) {
+                    input.dataset.saved = '1';
+                } else {
+                    console.error('IP 저장 실패:', r.status);
+                }
+            }).catch(function(e) { console.error('IP 저장 오류:', e); });
+        }
+
         document.querySelectorAll('.school-ip-input').forEach(function(input) {
-            input.addEventListener('blur', function() {
-                var schoolId = this.getAttribute('data-school-id');
-                var value = this.value.trim();
-                var ip = value === '' ? null : parseInt(value, 10);
-                if (ip !== null && (isNaN(ip) || ip < 0 || ip > 255)) return;
-
-                var params = new URLSearchParams();
-                if (ip !== null) params.append('ip', ip);
-
-                fetch('/school/' + schoolId + '/ip?' + params.toString(), {
-                    method: 'PATCH',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                }).then(function(r) {
-                    if (!r.ok) console.error('IP 저장 실패');
-                }).catch(function(e) { console.error(e); });
+            if (!input.getAttribute('data-school-id')) return;
+            var debounceTimer;
+            input.addEventListener('blur', function() { saveSchoolIp(this); });
+            input.addEventListener('input', function() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function() { saveSchoolIp(input); }, 500);
             });
             input.addEventListener('click', function(e) { e.stopPropagation(); });
         });

@@ -6,6 +6,7 @@ import com.inet.entity.School;
 import com.inet.repository.SchoolRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.text.Collator;
 import java.util.List;
@@ -45,6 +46,7 @@ public class SchoolService {
     }
     
     // Update
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public School updateSchool(School school) {
         log.info("Updating school: {}", school);
         return schoolRepository.save(school);
