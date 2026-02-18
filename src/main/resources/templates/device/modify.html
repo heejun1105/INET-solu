@@ -285,6 +285,20 @@
             flex: 0.8;
         }
 
+        /* PC: 고유번호·관리번호·COMSNo 영역 전체 너비 사용 */
+        .number-fields-wrapper {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .number-fields-wrapper .form-group-modern {
+            margin-bottom: 0;
+        }
+        .number-fields-wrapper .multi-input-container {
+            margin-top: 0.5rem;
+        }
+
         /* 모바일/태블릿: 고유번호·관리번호 각각 다른 줄 (고유번호 블록 → 관리번호 블록) */
         @media (max-width: 1024px) {
             .number-fields-wrapper {
