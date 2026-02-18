@@ -6,13 +6,13 @@
 
 ## 📋 목차
 
-- [프로젝트 소개](#프로젝트-소개)
-- [주요 기능](#주요-기능)
-- [기술 스택](#기술-스택)
-- [시작하기](#시작하기)
-- [프로젝트 구조](#프로젝트-구조)
-- [배포](#배포)
-- [문서](#문서)
+- [프로젝트 소개](#-프로젝트-소개)
+- [주요 기능](#-주요-기능)
+- [기술 스택](#-기술-스택)
+- [프로젝트 구조](#-프로젝트-구조)
+- [시작하기](#-시작하기)
+- [배포](#-배포)
+- [문서](#-문서)
 
 ## 🎯 프로젝트 소개
 
@@ -24,7 +24,7 @@ INET은 교육기관의 네트워크 장비(컴퓨터, 모니터, 무선AP 등)�
 - 🔐 **세밀한 권한 관리**: 역할 기반 접근 제어 및 학교별 권한 분리
 - 📊 **대량 데이터 처리**: 엑셀 업로드를 통한 일괄 등록 및 배치 처리
 - 🎨 **평면도 시각화**: HTML5 Canvas 기반 실시간 평면도 편집 및 PPT 내보내기
-- 📱 **QR 코드 생성**: 장비 고유번호를 QR 코드로 변환하여 빠른 식별
+- 📱 **QR 코드**: 장비 고유번호 QR 생성, 모바일 카메라로 스캔 후 즉시 검색
 
 ## ✨ 주요 기능
 
@@ -36,6 +36,7 @@ INET은 교육기관의 네트워크 장비(컴퓨터, 모니터, 무선AP 등)�
 - 엑셀 업로드/다운로드
 - 장비 검사 모드 및 상태 관리
 - 장비 이력 추적
+- **QR 코드 스캔 검색**: 모바일/태블릿에서 카메라로 QR 스캔 시 즉시 검색
 
 ### 2. 무선AP 관리
 - 무선AP 등록/수정/삭제
@@ -80,7 +81,7 @@ INET은 교육기관의 네트워크 장비(컴퓨터, 모니터, 무선AP 등)�
 ## 🛠 기술 스택
 
 ### Backend
-- **Java 21** - 최신 LTS 버전
+- **Java 21** - LTS 버전
 - **Spring Boot 3.2.3** - 애플리케이션 프레임워크
 - **Spring Data JPA** - 데이터 접근 계층
 - **Spring Security** - 인증 및 인가
@@ -104,6 +105,66 @@ INET은 교육기관의 네트워크 장비(컴퓨터, 모니터, 무선AP 등)�
 - **Apache POI 5.2.3** - 엑셀 파일 처리
 - **Google ZXing** - QR 코드 생성
 - **Cache2k** - 캐싱 라이브러리
+- **jsQR** - 웹 카메라 QR 코드 스캔
+
+## 📁 프로젝트 구조
+
+```
+INET/
+├── src/
+│   ├── main/
+│   │   ├── java/com/inet/
+│   │   │   ├── INETApplication.java      # 애플리케이션 진입점
+│   │   │   ├── controller/              # REST API 및 페이지 컨트롤러
+│   │   │   │   ├── DeviceController.java
+│   │   │   │   ├── WirelessApController.java
+│   │   │   │   ├── FloorPlanController.java
+│   │   │   │   ├── SchoolController.java
+│   │   │   │   ├── ClassroomController.java
+│   │   │   │   ├── QrCodeController.java
+│   │   │   │   ├── IpController.java
+│   │   │   │   ├── AdminController.java
+│   │   │   │   ├── AuthController.java
+│   │   │   │   └── ...
+│   │   │   ├── service/                 # 비즈니스 로직
+│   │   │   │   ├── DeviceService.java
+│   │   │   │   ├── WirelessApService.java
+│   │   │   │   ├── FloorPlanService.java
+│   │   │   │   ├── SchoolService.java
+│   │   │   │   ├── QrCodeService.java
+│   │   │   │   └── ...
+│   │   │   ├── repository/              # 데이터 접근 계층 (JPA)
+│   │   │   ├── entity/                  # JPA 엔티티
+│   │   │   ├── dto/                     # 데이터 전송 객체
+│   │   │   ├── config/                  # 설정 (Security, Views 등)
+│   │   │   ├── aspect/                  # AOP (권한 검사)
+│   │   │   └── util/                    # 유틸리티
+│   │   └── resources/
+│   │       ├── templates/               # Thymeleaf 템플릿
+│   │       │   ├── device/              # 장비 관련 페이지
+│   │       │   ├── wireless-ap/          # 무선AP 관련 페이지
+│   │       │   ├── floorplan/            # 평면도 페이지
+│   │       │   ├── school/               # 학교 관리
+│   │       │   ├── classroom/            # 교실 관리
+│   │       │   ├── admin/                # 관리자
+│   │       │   ├── auth/                 # 로그인/회원가입
+│   │       │   ├── ip/                   # IP 대장
+│   │       │   ├── qr-code/              # QR 코드 생성
+│   │       │   └── fragments/            # 공통 레이아웃
+│   │       ├── static/                   # 정적 리소스
+│   │       │   ├── css/
+│   │       │   ├── js/
+│   │       │   │   └── floorplan/        # 평면도 편집기 모듈
+│   │       │   └── images/
+│   │       ├── db/migration/             # Flyway 마이그레이션 (V1~V22)
+│   │       └── application.properties
+│   └── test/                             # 테스트 코드
+├── docs/                                 # 프로젝트 문서
+├── delivery/                             # 배포용 패키지
+├── build.gradle
+├── settings.gradle
+└── README.md
+```
 
 ## 🚀 시작하기
 
@@ -127,6 +188,7 @@ CREATE DATABASE inet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 3. **환경 설정**
+
 `src/main/resources/application.properties` 파일 수정:
 ```properties
 spring.datasource.url=jdbc:mysql://localhost:3306/inet
@@ -150,8 +212,6 @@ spring.datasource.password=your_password
 
 ### 개발 환경 설정
 
-개발 모드에서는 DevTools가 자동으로 활성화되어 코드 변경 시 자동 재시작됩니다.
-
 ```properties
 # application.properties
 spring.devtools.restart.enabled=true
@@ -159,63 +219,36 @@ spring.thymeleaf.cache=false
 spring.jpa.show-sql=true
 ```
 
-## 📁 프로젝트 구조
-
-```
-INET/
-├── src/
-│   ├── main/
-│   │   ├── java/com/inet/
-│   │   │   ├── controller/     # REST API 및 페이지 컨트롤러
-│   │   │   ├── service/        # 비즈니스 로직
-│   │   │   ├── repository/     # 데이터 접근 계층
-│   │   │   ├── entity/         # JPA 엔티티
-│   │   │   ├── config/         # 설정 클래스
-│   │   │   └── exception/      # 예외 처리
-│   │   ├── resources/
-│   │   │   ├── templates/      # Thymeleaf 템플릿
-│   │   │   ├── static/         # 정적 리소스 (CSS, JS)
-│   │   │   ├── db/migration/   # Flyway 마이그레이션 스크립트
-│   │   │   └── application.properties
-│   └── test/                   # 테스트 코드
-├── build.gradle                # Gradle 빌드 설정
-└── README.md
-```
-
 ## 🌐 배포
 
-### 무료 배포 옵션
+### 현재 배포 환경
 
-#### Railway (추천)
-- 무료 크레딧 $5/월
-- MySQL 자동 제공
+**Railway**에서 배포 중입니다. (유료 플랜)
+
 - GitHub 연동 자동 배포
+- MySQL 데이터베이스 연동
 - SSL 자동 제공
-
-자세한 배포 방법은 [무료_배포_가이드.md](무료_배포_가이드.md) 참고
-
-#### Oracle Cloud (영구 무료)
-- Always Free 티어
-- VM 인스턴스 2개 무료
-- MySQL 무료
+- 환경 변수 기반 설정
 
 ### 프로덕션 설정
 
-1. `application-prod.properties` 생성
+1. `application-prod.properties` 생성 (또는 `application-prod.properties.example` 참고)
 2. 환경 변수 설정:
    - `SPRING_PROFILES_ACTIVE=prod`
    - `SPRING_DATASOURCE_URL`
    - `SPRING_DATASOURCE_USERNAME`
    - `SPRING_DATASOURCE_PASSWORD`
-3. Flyway 활성화
-4. 로그 레벨 조정 (INFO)
+3. `server.port=${PORT:8082}` (Railway 등에서 PORT 자동 할당 시)
+
+자세한 배포 방법은 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md), [무료_배포_가이드.md](무료_배포_가이드.md) 참고
 
 ## 📚 문서
 
 - [배포 가이드](DEPLOYMENT_GUIDE.md) - 서버 배포 상세 가이드
-- [무료 배포 가이드](무료_배포_가이드.md) - 무료 호스팅 플랫폼 배포 방법
+- [무료 배포 가이드](무료_배포_가이드.md) - 무료/유료 호스팅 플랫폼 배포 방법
 - [페이지별 기술 설계](페이지별_기술_설계.md) - 각 페이지의 기술적 구현 상세
 - [포트폴리오 기술 설계 요소](포트폴리오_기술_설계_요소.md) - 아키텍처 및 설계 패턴
+- [docs/](docs/) - 추가 기술 문서
 
 ## 🔒 보안
 

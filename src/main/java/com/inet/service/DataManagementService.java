@@ -42,6 +42,7 @@ public class DataManagementService {
     private final EntityManager entityManager;
     private final SchoolRepository schoolRepository;
     private final SchoolPermissionRepository schoolPermissionRepository;
+    private final DisabledIpRepository disabledIpRepository;
 
     @Autowired
     public DataManagementService(
@@ -65,7 +66,8 @@ public class DataManagementService {
             RoomSeatRepository roomSeatRepository,
             EntityManager entityManager,
             SchoolRepository schoolRepository,
-            SchoolPermissionRepository schoolPermissionRepository) {
+            SchoolPermissionRepository schoolPermissionRepository,
+            DisabledIpRepository disabledIpRepository) {
         this.deviceRepository = deviceRepository;
         this.classroomRepository = classroomRepository;
         this.manageRepository = manageRepository;
@@ -87,6 +89,7 @@ public class DataManagementService {
         this.entityManager = entityManager;
         this.schoolRepository = schoolRepository;
         this.schoolPermissionRepository = schoolPermissionRepository;
+        this.disabledIpRepository = disabledIpRepository;
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -218,7 +221,18 @@ public class DataManagementService {
                 totalRecordsDeleted += deletedManages;
                 logger.debug("Deleted {} manages", deletedManages);
                 
-                // 학교 권한(school_permissions)은 삭제하지 않음 (유지)
+                // 8단계: 비활성화 IP 삭제
+                int deletedDisabledIps = disabledIpRepository.deleteBySchoolId(schoolId);
+                totalRecordsDeleted += deletedDisabledIps;
+                logger.debug("Deleted {} disabled IPs", deletedDisabledIps);
+                
+                // 9단계: 학교 권한 삭제
+                schoolPermissionRepository.deleteBySchoolId(schoolId);
+                logger.debug("Deleted school permissions");
+                
+                // 10단계: 학교 엔티티 삭제
+                schoolRepository.delete(school);
+                logger.debug("Deleted school entity");
                 
             } finally {
                 // 외래키 제약조건 다시 활성화
@@ -244,9 +258,8 @@ public class DataManagementService {
                 throw new RuntimeException(errorMsg);
             }
 
-            // 학교 엔티티는 삭제하지 않음 (학교 데이터는 유지)
             long endTime = System.currentTimeMillis();
-            logger.info("Successfully deleted all related data for school '{}' (school retained) in {}ms. Total records deleted: {}", 
+            logger.info("Successfully deleted school '{}' and all related data in {}ms. Total records deleted: {}", 
                 school.getSchoolName(), (endTime - startTime), totalRecordsDeleted);
             
         } catch (Exception e) {

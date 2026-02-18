@@ -105,7 +105,9 @@ public class SchoolController {
     }
 
     @PostMapping("/add")
-    public String addSchool(@ModelAttribute School school, RedirectAttributes redirectAttributes) {
+    public String addSchool(@ModelAttribute School school,
+                           @RequestParam(required = false) Integer ip,
+                           RedirectAttributes redirectAttributes) {
         // 권한 체크
         User user = checkPermission(Feature.SCHOOL_MANAGEMENT, redirectAttributes);
         if (user == null) {
@@ -116,6 +118,9 @@ public class SchoolController {
                 redirectAttributes.addFlashAttribute("error", "학교명을 입력해주세요.");
                 return "redirect:/school/manage";
             }
+            if (ip != null && ip >= 0 && ip <= 255) {
+                school.setIp(ip);
+            }
             
             schoolService.saveSchool(school);
             redirectAttributes.addFlashAttribute("success", "학교가 성공적으로 추가되었습니다.");
@@ -125,6 +130,30 @@ public class SchoolController {
         }
         
         return "redirect:/school/manage";
+    }
+
+    @PatchMapping("/{id}/ip")
+    @ResponseBody
+    public ResponseEntity<?> updateSchoolIp(@PathVariable Long id,
+                                            @RequestParam(required = false) Integer ip) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+        User user = userService.findByUsername(auth.getName()).orElse(null);
+        if (user == null || !permissionService.hasPermission(user, Feature.SCHOOL_MANAGEMENT)) {
+            return ResponseEntity.status(403).build();
+        }
+        try {
+            School school = schoolService.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 학교입니다."));
+            school.setIp((ip != null && ip >= 0 && ip <= 255) ? ip : null);
+            schoolService.updateSchool(school);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("학교 IP 수정 실패: schoolId={}", id, e);
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @PostMapping("/delete/{id}")

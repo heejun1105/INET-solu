@@ -25,4 +25,9 @@ public interface DisabledIpRepository extends JpaRepository<DisabledIp, Long> {
     @Transactional
     @Query("DELETE FROM DisabledIp d WHERE d.school.schoolId = :schoolId AND d.ipAddress = :ipAddress")
     int deleteBySchoolIdAndIpAddress(@Param("schoolId") Long schoolId, @Param("ipAddress") String ipAddress);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM DisabledIp d WHERE d.school.schoolId = :schoolId")
+    int deleteBySchoolId(@Param("schoolId") Long schoolId);
 }

@@ -1525,6 +1525,66 @@ public class DeviceController {
         return ResponseEntity.ok(response);
     }
     
+    @GetMapping("/api/inspection-status-summary")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> getInspectionStatusSummary(
+            @RequestParam Long schoolId,
+            @RequestParam(required = false) Long classroomId,
+            @RequestParam(required = false) String type) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                response.put("success", false);
+                response.put("message", "로그인이 필요합니다.");
+                return ResponseEntity.status(401).body(response);
+            }
+            User user = userService.findByUsername(auth.getName()).orElse(null);
+            if (user == null) {
+                response.put("success", false);
+                response.put("message", "사용자를 찾을 수 없습니다.");
+                return ResponseEntity.status(401).body(response);
+            }
+            User checkedUser = permissionHelper.checkSchoolPermission(user, Feature.DEVICE_INSPECTION, schoolId, null);
+            if (checkedUser == null) {
+                response.put("success", false);
+                response.put("message", "해당 학교에 대한 장비검사 권한이 없습니다.");
+                return ResponseEntity.status(403).body(response);
+            }
+            List<Device> devices = deviceService.findFiltered(schoolId, type, classroomId);
+            Map<Long, String> statuses = deviceInspectionStatusService.getInspectionStatuses(schoolId, user.getId());
+            Map<String, int[]> byClassroom = new LinkedHashMap<>();
+            for (Device d : devices) {
+                String roomName = (d.getClassroom() != null && d.getClassroom().getRoomName() != null)
+                    ? d.getClassroom().getRoomName() : "미지정 교실";
+                byClassroom.computeIfAbsent(roomName, k -> new int[]{0, 0})[0]++;
+                String st = statuses.get(d.getDeviceId());
+                if ("confirmed".equals(st) || "modified".equals(st)) {
+                    byClassroom.get(roomName)[1]++;
+                }
+            }
+            List<Map<String, Object>> classrooms = new ArrayList<>();
+            for (Map.Entry<String, int[]> e : byClassroom.entrySet()) {
+                int total = e.getValue()[0];
+                int checked = e.getValue()[1];
+                String color = checked == 0 ? "red" : (checked == total ? "green" : "orange");
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("classroomName", e.getKey());
+                row.put("deviceCount", total);
+                row.put("checkedCount", checked);
+                row.put("statusColor", color);
+                classrooms.add(row);
+            }
+            response.put("success", true);
+            response.put("classrooms", classrooms);
+        } catch (Exception e) {
+            log.error("검사 현황 조회 중 오류 발생", e);
+            response.put("success", false);
+            response.put("message", com.inet.util.UserMessageUtils.toUserFriendly(e, "검사 현황 조회"));
+        }
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/inspection/status/load")
     @ResponseBody
     public ResponseEntity<Map<String, Object>> loadInspectionStatuses(@RequestParam Long schoolId) {

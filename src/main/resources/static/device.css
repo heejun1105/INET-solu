@@ -142,7 +142,7 @@ input:focus, textarea:focus, select:focus {
 .device-table th {
     background-color: #1e3a8a;
     color: white;
-    padding: 12px 8px;
+    padding: 11px 7px;
     text-align: center;
     font-weight: 600;
     border-bottom: 2px solid #1e40af;
@@ -150,7 +150,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .device-table td {
-    padding: 10px 8px;
+    padding: 9px 7px;
     text-align: center;
     border-bottom: 1px solid #e5e7eb;
     vertical-align: middle;
@@ -188,6 +188,13 @@ input:focus, textarea:focus, select:focus {
         min-width: 1420px;
         width: 100%;
     }
+}
+
+/* 테이블 가로 스크롤 래퍼 - 노트북/데스크톱에서 표 잘림 방지 (태블릿/모바일은 카드뷰로 별도 적용) */
+.device-table-scroll-wrapper {
+    overflow-x: auto;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* 유형 컬럼 스타일 - 4글자까지 줄바꿈 안되게 */
@@ -374,7 +381,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .device-table tr.classroom-header td {
-    padding: 10px;
+    padding: 9px;
     font-weight: 600;
     color: #fff;
     text-align: left;
@@ -393,7 +400,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .device-table tr.group-header td {
-    padding: 8px 10px;
+    padding: 7px 9px;
     font-weight: 600;
     color: #2d3436;
     text-align: left;
@@ -558,11 +565,6 @@ input:focus, textarea:focus, select:focus {
     .container {
         width: 95%;
         padding: 15px;
-    }
-    
-    .device-table {
-        display: block;
-        overflow-x: auto;
     }
 }
 
@@ -822,9 +824,10 @@ input:focus, textarea:focus, select:focus {
 
 /* 태블릿/작은 랩탑 스타일 (768px ~ 1100px) - 카드 형태로 표시 */
 @media (min-width: 768px) and (max-width: 1100px) {
-    /* 테이블 숨기고 카드 보이기 */
+    /* 테이블 숨기고 카드 보이기 (!important: JS 인라인 스타일보다 우선) */
+    .device-table-scroll-wrapper,
     .device-table {
-        display: none;
+        display: none !important;
     }
     
     .mobile-card-container {
@@ -876,9 +879,10 @@ input:focus, textarea:focus, select:focus {
 
 /* 모바일 스타일 */
 @media (max-width: 767px) {
-    /* 테이블 숨기고 카드 보이기 */
+    /* 테이블 숨기고 카드 보이기 (!important: JS 인라인 스타일보다 우선) */
+    .device-table-scroll-wrapper,
     .device-table {
-        display: none;
+        display: none !important;
     }
     
     .mobile-card-container {
@@ -915,8 +919,9 @@ input:focus, textarea:focus, select:focus {
 
 /* 포트레이트(세로) 전용: 태블릿/랩탑 세로에서도 카드뷰 우선 노출 */
 @media (orientation: portrait) and (max-width: 1200px) {
+    .device-table-scroll-wrapper,
     .device-table {
-        display: none;
+        display: none !important;
     }
     .mobile-card-container {
         display: block;
